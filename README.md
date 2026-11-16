@@ -4,23 +4,23 @@
 
 An offline, voice-first assistant for first-principles research. You talk to a specialist expert bot out loud. A second, silent agent (the Scribe) listens to the whole conversation and turns it into a block diagram, research, a score, a verdict and a document. Everything runs on your own PC, with an optional Online switch.
 
-**Open [`index.html`](index.html) in a browser for the interactive blueprint.**
+## Sections
 
-## What is here
+| Section | Folder | Status |
+|---|---|---|
+| Blueprint | [`blueprint/`](blueprint/) | Reference. Five figures that explain the whole product. |
+| App | [`app/`](app/) | Working. The app in one file, for use inside Claude or on its own. |
+| Android APK | `android/` | Planned. |
+| Browser extension | `extension/` | Planned. |
 
-| File | What it is |
-|---|---|
-| [`index.html`](index.html) | The interactive blueprint: five figures that explain the whole product. Opens in any browser. |
-| [`app.html`](app.html) | The first working version of the app, in one file. |
+## App
 
-### The working app
-
-`app.html` does what the blueprint describes: you talk to an expert by voice or text, it answers aloud, and the Scribe keeps structured notes, draws the block diagram or knowledge graph, runs the three fits, scores ideas with RICE, gives a verdict and writes the report. Sessions are saved and can be reopened.
+[`app/index.html`](app/index.html) does what the blueprint describes: you talk to an expert by voice or text, it answers aloud, and the Scribe keeps structured notes, draws the block diagram or knowledge graph, runs the three fits, scores ideas with RICE, gives a verdict and writes the report. Sessions are saved and can be reopened.
 
 It runs in two ways:
 
 - **Inside Claude, as a page.** The brain, ears and voice come from Claude. Nothing to set up.
-- **On its own.** Download `app.html`, open it in Chrome or Edge, then open Settings and pick a brain: a local model through Ollama (free and offline), or Claude through your own API key (online, paid per use). You can switch at any time. Voice uses the browser's speech features, and sessions are saved in the browser.
+- **On its own.** Download `app/index.html`, open it in Chrome or Edge, then open Settings and pick a brain: a local model through Ollama (free and offline), or Claude through your own API key (online, paid per use). You can switch at any time. Voice uses the browser's speech features, and sessions are saved in the browser.
 
 Notes for running it on its own:
 
@@ -40,7 +40,11 @@ Three things in it are deliberately different from the original description:
 2. A browser extension.
 3. Offline speech recognition and offline Wikipedia, as in the blueprint.
 
-## The loop
+## Blueprint
+
+Open [`blueprint/index.html`](blueprint/index.html) in a browser for the interactive version. The rest of this section is the same design in text.
+
+### The loop
 
 ```
 You ask out loud → speech to text → expert bot → text to speech → you listen
@@ -48,7 +52,7 @@ You ask out loud → speech to text → expert bot → text to speech → you li
                          └─ the Scribe hears every word and builds as you talk
 ```
 
-## Two rooms
+### Two rooms
 
 **Build room** takes a product idea from a hunch to a clear yes or no.
 
@@ -64,11 +68,11 @@ You ask out loud → speech to text → expert bot → text to speech → you li
 
 **Learn room** is for understanding any subject from the ground up. Each idea becomes a node on a knowledge graph, linked to the ideas it rests on, with checked sources attached. Graphs from different sessions join where they share a node.
 
-## The experts
+### The experts
 
 Each bot is one narrow specialist with its own starting principles and questioning style: Physicist, Engineer, Economist, Market analyst, Customer researcher, Finance lead, Regulator, Skeptic, Historian, Philosopher, Geographer, Mathematician. You can write your own. An expert is a small text file with a name and domain, starting principles, questioning style, depth, allowed sources and a voice.
 
-## Offline first
+### Offline first
 
 | Part | Offline, always | Online, when switched on |
 |---|---|---|
@@ -80,14 +84,14 @@ Each bot is one narrow specialist with its own starting principles and questioni
 | Research | Structure, questions, what to look up | Named competitors, prices, market size, with sources |
 | Updates | Fixed at what you installed | Newer models and library on demand |
 
-### Limits to design around
+#### Limits to design around
 
 - A local model stops learning on its training date. Anything recent needs Online.
 - Models invent links. No link may come from the model's memory, only from the local library or a search result.
 - Video does not play offline. Video links are saved and open when you connect.
 - Depth depends on hardware. 16 GB of memory is a comfortable floor for a mid-size model.
 
-## Session folder
+### Session folder
 
 ```
 FirstPrinciples/
@@ -116,7 +120,7 @@ FirstPrinciples/
 
 Every session is a folder of plain files. Reopening one loads its summary and the last few turns, then searches the rest for whatever the next question needs.
 
-## Build order
+### Build order
 
 1. **The voice loop.** Speak to one expert offline and hear the answer. The transcript saves to a folder.
 2. **The expert shelf.** Pick, edit and create experts. Saved sessions reopen with their context.
