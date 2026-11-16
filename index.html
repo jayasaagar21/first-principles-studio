@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>First Principles Studio</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+html{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}
+/* Layout: a lab notebook on graph paper. Five numbered figures, each one picture of one part of the system; detail opens on tap. */
+:root{
+  --bg:#F1F4F2; --surface:#FFFFFF; --ink:#131A19; --muted:#55615E; --line:#CFD7D3; --grid:rgba(19,26,25,.055);
+  --build:#A61E4D; --build-soft:#F9E3EB; --learn:#0B6E63; --learn-soft:#DDF1EE; --warn:#8A5200; --warn-soft:#FBEFD6;
+  --f-display:"Bricolage Grotesque","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1413; --surface:#171D1C; --ink:#E8EEEB; --muted:#9BA8A3; --line:#2C3633; --grid:rgba(232,238,235,.05);
+    --build:#F27FA6; --build-soft:#3A1826; --learn:#55D1BF; --learn-soft:#0F3530; --warn:#E6AE52; --warn-soft:#3A2A0C;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1413; --surface:#171D1C; --ink:#E8EEEB; --muted:#9BA8A3; --line:#2C3633; --grid:rgba(232,238,235,.05);
+  --build:#F27FA6; --build-soft:#3A1826; --learn:#55D1BF; --learn-soft:#0F3530; --warn:#E6AE52; --warn-soft:#3A2A0C;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  background-color:var(--bg);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:24px 24px;
+  color:var(--ink); font:400 16px/1.55 var(--f-body);
+}
+.page{max-width:1040px;margin:0 auto;padding-block:28px 72px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:28px}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;line-height:1.1}
+h1{font-size:clamp(2.3rem,7vw,4rem);font-weight:800;letter-spacing:-.02em}
+h2{font-size:clamp(1.5rem,4vw,2.1rem);font-weight:700;letter-spacing:-.01em}
+h3{font-size:1.1rem;font-weight:700}
+p,ul,ol{margin:0}
+a{color:inherit}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left}
+:focus-visible{outline:2px solid var(--learn);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.lede{font-size:1.15rem;max-width:60ch}
+.cap{color:var(--muted);max-width:65ch}
+
+/* header */
+.top{display:flex;flex-direction:column;gap:14px;padding-top:8px}
+.nav{display:flex;flex-wrap:wrap;gap:8px}
+.nav a{font-family:var(--f-mono);font-size:.8rem;text-decoration:none;border:1px solid var(--line);background:var(--surface);padding:6px 10px}
+.nav a:hover{border-color:var(--ink)}
+
+/* plates */
+.plate{background:var(--surface);border:1px solid var(--line);padding:clamp(16px,3vw,28px);display:flex;flex-direction:column;gap:20px;min-width:0}
+.plate-head{display:flex;flex-direction:column;gap:6px}
+.sub{display:flex;flex-direction:column;gap:12px;min-width:0}
+
+/* flow rows */
+.flow{list-style:none;padding:0;display:flex;align-items:stretch}
+.flow li{display:flex;align-items:center;flex:1 1 0;min-width:0}
+.flow li::after{content:"\2192";font-family:var(--f-mono);color:var(--muted);padding:0 6px}
+.flow li:last-child::after{content:none}
+.node{flex:1;min-width:0;border:1.5px solid var(--ink);padding:10px 12px;display:flex;flex-direction:column;gap:2px;align-self:stretch;background:var(--surface)}
+.node strong{font-weight:600;line-height:1.25}
+.node.key{background:var(--ink);color:var(--surface)}
+.node.key .mono{color:inherit;opacity:.75}
+.flag{font-family:var(--f-mono);font-size:.68rem;font-style:normal;color:var(--warn);background:var(--warn-soft);border:1px solid currentColor;padding:0 5px;align-self:flex-start;margin-top:4px}
+@media (max-width:760px){
+  .flow{flex-direction:column}
+  .flow li{flex-direction:column;align-items:stretch;flex:none}
+  .flow li::after{content:"\2193";text-align:center;padding:2px 0}
+}
+.pc{position:relative;border:1.5px dashed var(--muted);padding:26px 14px 14px;display:flex;flex-direction:column;gap:10px}
+.pc-label{position:absolute;top:-.7em;left:12px;background:var(--surface);padding:0 6px}
+.every{text-align:center}
+.scribe{border:1.5px solid var(--ink);padding:12px;display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center}
+.scribe-head{display:flex;flex-direction:column;gap:2px;flex:1 1 220px;min-width:0}
+.chips{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.chips li{font-family:var(--f-mono);font-size:.78rem;border:1px solid var(--line);padding:3px 9px}
+
+/* rooms */
+.rooms{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.room{border:1.5px solid var(--line);padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.room-name{font-family:var(--f-display);font-size:1.7rem;font-weight:700;line-height:1.1}
+.room[aria-selected="true"].room-build{border-color:var(--build);background:var(--build-soft)}
+.room[aria-selected="true"].room-learn{border-color:var(--learn);background:var(--learn-soft)}
+.panel{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+/* stepper */
+.steps{list-style:none;padding:0;display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+@media (max-width:860px){.steps{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:460px){.steps{grid-template-columns:repeat(2,1fr)}}
+.step{width:100%;height:100%;border:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:2px;line-height:1.25}
+.step .n{font-family:var(--f-mono);font-size:.8rem;color:var(--build)}
+.step span:last-child{font-size:.86rem;color:var(--muted)}
+.step:hover{border-color:var(--build)}
+.step[aria-pressed="true"]{background:var(--build);border-color:var(--build);color:var(--surface)}
+.step[aria-pressed="true"] .n,.step[aria-pressed="true"] span:last-child{color:inherit}
+.stepbody{border-top:1.5px solid var(--build);padding-top:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px}
+.col{display:flex;flex-direction:column;gap:8px;min-width:0}
+.list{list-style:none;padding:0;display:flex;flex-direction:column;gap:6px}
+.list li{padding-left:16px;position:relative}
+.list li::before{content:"";position:absolute;left:0;top:.65em;width:8px;height:1.5px;background:var(--muted)}
+.net{font-family:var(--f-mono);font-size:.66rem;color:var(--warn);background:var(--warn-soft);border:1px solid currentColor;padding:0 5px;white-space:nowrap}
+.rings{width:150px;max-width:100%}
+.rings .r1{fill:var(--surface);stroke:var(--build);stroke-width:1.5}
+.rings .r2{fill:var(--build-soft);stroke:var(--build);stroke-width:1.5}
+.rings .r3{fill:var(--build);stroke:var(--build);stroke-width:1.5}
+.rings text{font-family:var(--f-mono);font-size:10px;fill:var(--ink);text-anchor:middle}
+.rings text.in{fill:var(--surface)}
+.ringrow{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.ringrow p{flex:1 1 160px;min-width:0;font-size:.9rem;color:var(--muted)}
+
+/* RICE */
+.rice{display:flex;flex-direction:column}
+.rrow{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(4,84px) minmax(0,1.3fr);gap:10px;align-items:end;padding:12px 0;border-top:1px solid var(--line)}
+.rrow>strong{align-self:center;line-height:1.25}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-family:var(--f-mono);font-size:.68rem;color:var(--muted)}
+.fld input,.fld select{font:inherit;font-variant-numeric:tabular-nums;width:100%;padding:5px 6px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.score{display:flex;flex-direction:column;gap:4px;min-width:0}
+.score b{font-family:var(--f-display);font-size:1.3rem;font-variant-numeric:tabular-nums;line-height:1}
+.score small{font-family:var(--f-mono);font-size:.7rem;color:var(--muted)}
+.bar{height:8px;background:var(--build-soft)}
+.bar i{display:block;height:100%;background:var(--build);transition:width .2s}
+@media (max-width:760px){
+  .rrow{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rrow>strong,.rrow>.score{grid-column:1/-1}
+}
+
+/* verdict + document */
+.verdict{border:1.5px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:6px}
+.verdict h3{font-size:1.4rem}
+.paper{border:1px solid var(--line);background:var(--bg);padding:18px;max-width:520px;display:flex;flex-direction:column;gap:10px}
+.toc{list-style:none;padding:0;display:flex;flex-direction:column;gap:5px;counter-reset:t}
+.toc li{counter-increment:t;display:flex;gap:10px}
+.toc li::before{content:counter(t);font-family:var(--f-mono);color:var(--muted);min-width:1.4em;font-variant-numeric:tabular-nums}
+.toc li.app::before{content:"A"}
+
+/* learn */
+.learn-grid{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:760px){.learn-grid{grid-template-columns:minmax(0,1fr)}}
+.graph{width:100%;max-width:380px;height:auto;display:block}
+.gedge{stroke:var(--muted);stroke-width:1.5;fill:none}
+.garrow{fill:var(--muted)}
+.gnode{cursor:pointer}
+.gnode rect{fill:var(--surface);stroke:var(--ink);stroke-width:1.5}
+.gnode text{fill:var(--ink);font-family:var(--f-body);font-size:13px;font-weight:500;text-anchor:middle;dominant-baseline:central}
+.gnode:hover rect{stroke:var(--learn)}
+.gnode.on rect{fill:var(--learn);stroke:var(--learn)}
+.gnode.on text{fill:var(--surface)}
+.gnode:focus-visible{outline:none}
+.gnode:focus-visible rect{stroke:var(--learn);stroke-width:3}
+.gdetail{border-top:1.5px solid var(--learn);padding-top:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.gdetail h3{font-size:1.5rem}
+.gdetail a{color:var(--learn);font-weight:500}
+.how{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;counter-reset:h}
+.how li{counter-increment:h;border-top:1px solid var(--line);padding-top:8px}
+.how li::before{content:counter(h);font-family:var(--f-mono);color:var(--learn);display:block}
+
+/* experts */
+.tiles{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
+.tile{width:100%;height:100%;border:1.5px solid var(--line);padding:8px 10px 10px;display:flex;flex-direction:column;gap:2px;line-height:1.2}
+.tile .sym{font-family:var(--f-display);font-size:1.9rem;font-weight:700;line-height:1}
+.tile .who{font-weight:600;font-size:.92rem}
+.tile .mono{font-size:.64rem}
+.tile .mono.b{color:var(--build)} .tile .mono.l{color:var(--learn)}
+.tile:hover{border-color:var(--ink)}
+.tile[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.tile[aria-pressed="true"] .mono{color:inherit;opacity:.8}
+.tile.new{border-style:dashed}
+.xdetail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:24px;border-top:1.5px solid var(--ink);padding-top:16px}
+@media (max-width:760px){.xdetail{grid-template-columns:minmax(0,1fr)}}
+.xdetail h3{font-size:1.6rem}
+.xq{font-size:1.02rem}
+
+/* stack matrix */
+.matrix{display:flex;flex-direction:column}
+.mrow{display:grid;grid-template-columns:minmax(120px,170px) minmax(0,1fr) minmax(0,1fr);gap:8px 20px;padding:12px 0;border-top:1px solid var(--line)}
+.mhead{border-top:0;padding-top:0}
+.part{display:flex;flex-direction:column;gap:1px}
+.part strong{line-height:1.25}
+@media (max-width:700px){
+  .mrow{grid-template-columns:minmax(0,1fr)}
+  .mhead{display:none}
+  .mrow [data-l]::before{content:attr(data-l);display:block;font-family:var(--f-mono);font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+}
+.limits{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.limit{background:var(--warn-soft);border:1px solid var(--warn);padding:12px;display:flex;flex-direction:column;gap:4px}
+.limit strong{line-height:1.25}
+.treewrap{overflow-x:auto;border:1px solid var(--line);background:var(--bg)}
+.tree{margin:0;padding:14px;font:400 .82rem/1.5 var(--f-mono);color:var(--ink);white-space:pre}
+.tree span{color:var(--muted)}
+.two{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:760px){.two{grid-template-columns:minmax(0,1fr)}}
+
+/* order */
+.order{list-style:none;padding:0;display:flex;flex-direction:column;counter-reset:o}
+.order li{counter-increment:o;display:grid;grid-template-columns:3rem minmax(0,1fr);gap:4px 12px;padding:14px 0;border-top:1px solid var(--line)}
+.order li::before{content:counter(o);font-family:var(--f-display);font-size:2.4rem;font-weight:700;line-height:.9;color:var(--muted);grid-row:1/3}
+.order h3,.order p{grid-column:2}
+.foot{display:flex;flex-direction:column;gap:8px;font-size:.86rem;color:var(--muted)}
+.foot ul{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:4px 16px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+<header class="top">
+  <span class="mono">Product blueprint &middot; working name</span>
+  <h1>First Principles Studio</h1>
+  <p class="lede">Talk to an expert out loud and break any idea or subject down to what is certainly true. A silent Scribe turns the conversation into a diagram, research, a verdict and a document. All of it runs on your own PC.</p>
+  <nav class="nav" aria-label="Figures">
+    <a href="#loop">Fig. 1 The loop</a><a href="#rooms">Fig. 2 Two rooms</a><a href="#experts">Fig. 3 The experts</a><a href="#pc">Fig. 4 On your PC</a><a href="#order">Fig. 5 Build order</a>
+  </nav>
+</header>
+
+<!-- FIG 1 -->
+<section class="plate" id="loop">
+  <div class="plate-head"><span class="mono">Fig. 1</span><h2>The whole thing in one picture</h2>
+    <p class="cap">You speak, an expert answers, and the Scribe keeps the record. Nothing leaves the PC unless you switch on Online.</p></div>
+  <div class="pc">
+    <span class="mono pc-label">Inside your PC</span>
+    <ol class="flow">
+      <li><div class="node"><span class="mono">You</span><strong>Ask out loud</strong></div></li>
+      <li><div class="node"><span class="mono">Ears</span><strong>Speech becomes text</strong></div></li>
+      <li><div class="node key"><span class="mono">Expert</span><strong>Reasons from first principles</strong></div></li>
+      <li><div class="node"><span class="mono">Voice</span><strong>Text becomes speech</strong></div></li>
+      <li><div class="node"><span class="mono">You</span><strong>Listen, then ask again</strong></div></li>
+    </ol>
+    <span class="mono every">&darr; every word is also heard by &darr;</span>
+    <div class="scribe">
+      <div class="scribe-head"><span class="mono">Scribe</span><strong>A second agent that never speaks. It writes and builds while you talk.</strong></div>
+      <ul class="chips"><li>Transcript</li><li>Block diagram</li><li>Research</li><li>Score</li><li>Verdict</li><li>Document</li></ul>
+    </div>
+  </div>
+</section>
+
+<!-- FIG 2 -->
+<section class="plate" id="rooms">
+  <div class="plate-head"><span class="mono">Fig. 2</span><h2>Two rooms, one voice loop</h2>
+    <p class="cap">Pick a room. The examples below are illustrative: one sample idea and one sample topic, used to show what each screen holds.</p></div>
+  <div class="rooms" role="tablist" aria-label="Rooms">
+    <button class="room room-build" role="tab" id="tab-build" aria-selected="true" aria-controls="room-build">
+      <span class="mono">For ideas</span><span class="room-name">Build room</span><span>Take a product idea from a hunch to a clear yes or no.</span></button>
+    <button class="room room-learn" role="tab" id="tab-learn" aria-selected="false" aria-controls="room-learn">
+      <span class="mono">For knowledge</span><span class="room-name">Learn room</span><span>Understand any subject from the ground up.</span></button>
+  </div>
+
+  <div class="panel" id="room-build" role="tabpanel" aria-labelledby="tab-build">
+    <ol class="steps">
+      <li><button class="step" aria-pressed="true"><span class="n">1</span><strong>Talk</strong><span>Pull the idea apart</span></button></li>
+      <li><button class="step" aria-pressed="false"><span class="n">2</span><strong>Map</strong><span>Block diagram</span></button></li>
+      <li><button class="step" aria-pressed="false"><span class="n">3</span><strong>Three fits</strong><span>Market, product, customer</span></button></li>
+      <li><button class="step" aria-pressed="false"><span class="n">4</span><strong>Score</strong><span>Rank the ideas</span></button></li>
+      <li><button class="step" aria-pressed="false"><span class="n">5</span><strong>Verdict</strong><span>Pursue, park or drop</span></button></li>
+      <li><button class="step" aria-pressed="false"><span class="n">6</span><strong>Document</strong><span>One report, saved</span></button></li>
+    </ol>
+
+    <div class="stepbody">
+      <p class="cap">You and the expert question the idea until every statement lands in one of three piles. The Scribe sorts them live. Sample idea: a solar cold box for vegetable vendors.</p>
+      <div class="cols">
+        <div class="col"><h3>Facts</h3><span class="mono">Checkable today</span><ul class="list"><li>Leafy vegetables spoil faster when warm.</li><li>A solar panel only produces power in daylight.</li><li>Cooling moves heat out. It always costs energy.</li></ul></div>
+        <div class="col"><h3>Assumptions</h3><span class="mono">Must be tested</span><ul class="list"><li>Vendors lose enough stock to pay for a box.</li><li>A cart roof holds enough panel to run it.</li><li>Vendors would rather own than rent.</li></ul></div>
+        <div class="col"><h3>Open questions</h3><span class="mono">Nobody knows yet</span><ul class="list"><li>How much cooling does one crate need on a hot day?</li><li>What do vendors do about spoilage now?</li><li>Who repairs it when it breaks?</li></ul></div>
+      </div>
+    </div>
+
+    <div class="stepbody" hidden>
+      <p class="cap">The Scribe draws how the idea works as blocks and arrows. Any link that rests on an assumption is flagged, so the weak points show on the drawing.</p>
+      <ol class="flow">
+        <li><div class="node"><strong>Sun</strong></div></li>
+        <li><div class="node"><strong>Solar panel</strong><em class="flag">fits on a cart?</em></div></li>
+        <li><div class="node"><strong>Battery</strong><em class="flag">lasts till dusk?</em></div></li>
+        <li><div class="node"><strong>Cooling unit</strong></div></li>
+        <li><div class="node"><strong>Insulated box</strong></div></li>
+        <li><div class="node key"><strong>Fresh stock at closing time</strong></div></li>
+      </ol>
+      <p class="cap">From here the Scribe can also draft a clickable demo screen for software ideas.</p>
+    </div>
+
+    <div class="stepbody" hidden>
+      <p class="cap">Three separate checks. Items marked <span class="net">net</span> need Online mode for real names and numbers. Offline, the Scribe prepares the structure and the list of what to look up.</p>
+      <div class="cols">
+        <div class="col"><h3>Market fit</h3><span class="mono">Is there room?</span><ul class="list">
+          <li>Direct competitors: who sells the same thing <span class="net">net</span></li>
+          <li>Indirect competitors: what people do instead <span class="net">net</span></li>
+          <li>The market today: size, growth, what is shifting <span class="net">net</span></li>
+          <li>Blue ocean room: what to eliminate, reduce, raise and create</li>
+          <li>Cost to enter <span class="net">net</span></li>
+          <li>Viable or not, with the reason</li></ul></div>
+        <div class="col"><h3>Product fit</h3><span class="mono">Can it be built sensibly?</span><ul class="list">
+          <li>Does it solve the problem the talk uncovered?</li>
+          <li>Resource appetite: people, money, time, compute</li>
+          <li>Complexity map: the hard parts, named up front</li>
+          <li>Known unknowns: what could surprise you</li>
+          <li>Step-by-step path to launch the ideation phase</li></ul></div>
+        <div class="col"><h3>Customer fit</h3><span class="mono">Are these the right people?</span><ul class="list">
+          <li>Personas: who they are and what they need</li>
+          <li>Segments: which group to serve first</li>
+          <li>Channels: where they gather and how to reach them</li>
+          <li>Market sizing <span class="net">net</span></li></ul>
+          <div class="ringrow">
+            <svg class="rings" viewBox="0 0 160 160" role="img" aria-label="TAM contains SAM, which contains SOM">
+              <circle class="r1" cx="80" cy="80" r="76"/><circle class="r2" cx="80" cy="92" r="52"/><circle class="r3" cx="80" cy="106" r="28"/>
+              <text x="80" y="24">TAM</text><text x="80" y="58">SAM</text><text class="in" x="80" y="110">SOM</text>
+            </svg>
+            <p>TAM is everyone who could ever buy. SAM is the part you can serve. SOM is the part you can win first.</p>
+          </div></div>
+      </div>
+    </div>
+
+    <div class="stepbody" hidden>
+      <p class="cap">When several ideas are on the table, the Scribe scores them with RICE, the method from Intercom's product team. Score = Reach &times; Impact &times; Confidence &divide; Effort. These are example numbers. Change them and watch the ranking move.</p>
+      <div class="rice" id="rice"></div>
+      <p class="cap">Reach is people per quarter. Impact runs from 0.25 (minimal) to 3 (massive). Effort is person-months. ICE, Kano or MoSCoW can replace RICE in settings.</p>
+    </div>
+
+    <div class="stepbody" hidden>
+      <p class="cap">The Scribe lays out the evidence line by line. You make the call.</p>
+      <div class="cols">
+        <div class="verdict"><span class="mono">Outcome</span><h3>Pursue</h3><p>All three fits hold on facts and the score clears your bar. Next step: the smallest test that could prove it wrong.</p></div>
+        <div class="verdict"><span class="mono">Outcome</span><h3>Park</h3><p>One fit still rests on an untested assumption. The report names the test that would settle it.</p></div>
+        <div class="verdict"><span class="mono">Outcome</span><h3>Drop</h3><p>A fit fails on a fact. The report records why, so the idea does not come back unexamined.</p></div>
+      </div>
+    </div>
+
+    <div class="stepbody" hidden>
+      <p class="cap">Everything ends in one document, written to the idea's folder as Markdown and PDF.</p>
+      <div class="paper">
+        <span class="mono">report.md</span>
+        <h3>Solar cold box: first principles review</h3>
+        <ol class="toc">
+          <li>The idea in one paragraph</li><li>Facts, assumptions, open questions</li><li>Block diagram</li><li>Market fit</li><li>Product fit</li><li>Customer fit</li><li>Priority score</li><li>Verdict and next steps</li><li>Sources</li><li class="app">Full transcript</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="room-learn" role="tabpanel" aria-labelledby="tab-learn" hidden>
+    <p class="cap">Ask about anything. The expert explains from the ground up and the Scribe turns each idea into a node on a knowledge graph. Sample topic: why the monsoon happens. Tap a node.</p>
+    <div class="learn-grid">
+      <svg class="graph" id="graph" viewBox="0 0 360 536" role="group" aria-label="Knowledge graph for the monsoon">
+        <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="garrow" d="M0 0L10 5L0 10z"/></marker></defs>
+      </svg>
+      <div class="gdetail" aria-live="polite">
+        <span class="mono">First principle</span>
+        <h3 id="g-name"></h3>
+        <p id="g-text"></p>
+        <p><span class="mono">Rests on</span><br><span id="g-rests"></span></p>
+        <p><span class="mono">Read, from the offline library</span><br><a id="g-link" target="_blank" rel="noopener"></a></p>
+        <p><span class="mono">Watch</span><br>Video links are searched and checked when Online is on, then saved with the node.</p>
+      </div>
+    </div>
+    <ol class="how">
+      <li><strong>Ask anything.</strong> By voice, on any subject.</li>
+      <li><strong>Get the ground-up answer.</strong> The expert starts from what cannot be reduced further.</li>
+      <li><strong>Watch the graph grow.</strong> Each idea links to the ideas it rests on.</li>
+      <li><strong>Keep going later.</strong> Graphs from different sessions join where they share a node.</li>
+    </ol>
+    <ul class="chips"><li>Philosophy</li><li>History</li><li>Geography</li><li>Physics</li><li>Biology</li><li>Economics</li><li>Mathematics</li><li>Law</li><li>Medicine</li><li>Music</li><li>any topic</li></ul>
+  </div>
+</section>
+
+<!-- FIG 3 -->
+<section class="plate" id="experts">
+  <div class="plate-head"><span class="mono">Fig. 3</span><h2>The experts</h2>
+    <p class="cap">Each bot is one narrow specialist with its own starting principles and its own way of questioning. Pick one and the whole conversation takes that lens. Tap a tile to see how the same subject changes.</p></div>
+  <ul class="tiles" id="tiles"></ul>
+  <div class="xdetail" aria-live="polite">
+    <div class="sub"><span class="mono" id="x-room"></span><h3 id="x-name"></h3><p id="x-lens"></p>
+      <p><span class="mono">Starts from</span><br><span id="x-ax"></span></p></div>
+    <div class="sub"><span class="mono" id="x-on"></span><ul class="list xq" id="x-qs"></ul></div>
+  </div>
+</section>
+
+<!-- FIG 4 -->
+<section class="plate" id="pc">
+  <div class="plate-head"><span class="mono">Fig. 4</span><h2>On your PC</h2>
+    <p class="cap">Offline is the default. Online is a switch you turn on for a session when you want fresher or deeper answers.</p></div>
+  <div class="matrix" role="table" aria-label="What runs offline and online">
+    <div class="mrow mhead" role="row"><span class="mono" role="columnheader">Part</span><span class="mono" role="columnheader">Offline, always</span><span class="mono" role="columnheader">Online, when switched on</span></div>
+    <div class="mrow" role="row"><div class="part" role="cell"><span class="mono">Ears</span><strong>Speech to text</strong></div><div role="cell" data-l="Offline">Whisper or Parakeet, running locally. Whisper covers 99 languages. Parakeet is faster for English and major European languages.</div><div role="cell" data-l="Online">No change. Your voice stays on the PC.</div></div>
+    <div class="mrow" role="row"><div class="part" role="cell"><span class="mono">Brain</span><strong>The expert</strong></div><div role="cell" data-l="Offline">An open model run by Ollama. A mid-size one such as Qwen3 14B needs about 9 GB of memory.</div><div role="cell" data-l="Online">An optional stronger cloud model for hard questions. The screen always shows when it is in use.</div></div>
+    <div class="mrow" role="row"><div class="part" role="cell"><span class="mono">Voice</span><strong>Text to speech</strong></div><div role="cell" data-l="Offline">Kokoro for natural speech, or Piper for speed on modest hardware.</div><div role="cell" data-l="Online">No change.</div></div>
+    <div class="mrow" role="row"><div class="part" role="cell"><span class="mono">Library</span><strong>What it can look up</strong></div><div role="cell" data-l="Offline">Offline Wikipedia through Kiwix, plus every session you have saved.</div><div role="cell" data-l="Online">Live web search, YouTube search and a fresher Wikipedia.</div></div>
+    <div class="mrow" role="row"><div class="part" role="cell"><span class="mono">Links</span><strong>Where to learn more</strong></div><div role="cell" data-l="Offline">Wikipedia articles from the local library. They open without the net.</div><div role="cell" data-l="Online">Wikipedia and YouTube links, each taken from a search result and checked before you see it.</div></div>
+    <div class="mrow" role="row"><div class="part" role="cell"><span class="mono">Research</span><strong>Market, cost, competitors</strong></div><div role="cell" data-l="Offline">The structure, the questions, and a list of what to look up.</div><div role="cell" data-l="Online">Named competitors, prices and market size, each with its source.</div></div>
+    <div class="mrow" role="row"><div class="part" role="cell"><span class="mono">Updates</span><strong>Models and library</strong></div><div role="cell" data-l="Offline">Fixed at what you installed.</div><div role="cell" data-l="Online">Download a newer model or library whenever you choose.</div></div>
+  </div>
+
+  <div class="sub">
+    <h3>Four limits to design around</h3>
+    <div class="limits">
+      <div class="limit"><strong>A local model stops learning on its training date.</strong><span>Anything recent needs Online. Offline, the expert must say it does not know.</span></div>
+      <div class="limit"><strong>Models invent links.</strong><span>So no link ever comes from the model's memory. Each one comes from the local library or a search result.</span></div>
+      <div class="limit"><strong>Video does not play offline.</strong><span>Video links are saved with the session and open when you connect.</span></div>
+      <div class="limit"><strong>Depth depends on your hardware.</strong><span>16 GB of memory is a comfortable floor for a mid-size model. Smaller PCs run smaller, shallower models.</span></div>
+    </div>
+  </div>
+
+  <div class="two">
+    <div class="sub">
+      <h3>Your folder</h3>
+      <div class="treewrap"><pre class="tree">FirstPrinciples/
+├─ ideas/
+│  └─ 2026-11-15 solar-cold-box/
+│     ├─ session.json     <span>resume point</span>
+│     ├─ transcript.md    <span>every word, by speaker</span>
+│     ├─ principles.md    <span>facts, assumptions, questions</span>
+│     ├─ diagram.mmd      <span>block diagram</span>
+│     ├─ market-fit.md
+│     ├─ product-fit.md
+│     ├─ customer-fit.md
+│     ├─ score.json       <span>RICE inputs and result</span>
+│     └─ report.md        <span>final document, also .pdf</span>
+├─ learn/
+│  └─ monsoon/
+│     ├─ session.json
+│     ├─ transcript.md
+│     ├─ graph.json       <span>nodes and links</span>
+│     └─ sources.md       <span>checked links only</span>
+├─ experts/
+│  ├─ physicist.yaml
+│  └─ skeptic.yaml
+└─ library/               <span>offline Wikipedia, model files</span></pre></div>
+    </div>
+    <div class="sub">
+      <h3>Saving and picking up again</h3>
+      <ul class="list">
+        <li>Every session is a folder of plain files. You can read them without the app.</li>
+        <li>Open a saved session and the app loads its summary and the last few turns, then searches the rest for anything your next question needs.</li>
+        <li>The expert continues from where you stopped, in the same voice.</li>
+        <li>Experts are small text files too, so you can edit, copy and share them.</li>
+      </ul>
+      <p class="cap">If this becomes a product you sell, check licences early. Kokoro is Apache-2.0. Piper's engine is GPL-3.0 and each voice has its own terms.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FIG 5 -->
+<section class="plate" id="order">
+  <div class="plate-head"><span class="mono">Fig. 5</span><h2>Build order</h2>
+    <p class="cap">Each stage is usable on its own, so you learn from real use before building the next one. Stages 4 and 5 can swap.</p></div>
+  <ol class="order">
+    <li><h3>The voice loop</h3><p>Speak to one expert offline and hear the answer. The transcript saves to a folder.</p></li>
+    <li><h3>The expert shelf</h3><p>Pick, edit and create experts. Saved sessions reopen with their context.</p></li>
+    <li><h3>The Scribe</h3><p>Live sorting into facts, assumptions and questions. Block diagram. The final document.</p></li>
+    <li><h3>Three fits and the Online switch</h3><p>Sourced market, product and customer research. Scoring. The verdict page.</p></li>
+    <li><h3>The Learn room</h3><p>Knowledge graph, offline Wikipedia, checked links, graphs that join across sessions.</p></li>
+  </ol>
+</section>
+
+<footer class="foot">
+  <span class="mono">Sources for the tools named in Fig. 4, checked November 2026</span>
+  <ul>
+    <li><a href="https://openwhispr.com/blog/parakeet-vs-whisper-vs-nemotron" target="_blank" rel="noopener">Speech to text: Parakeet and Whisper</a></li>
+    <li><a href="https://www.promptquorum.com/local-llms/best-local-llms-2026" target="_blank" rel="noopener">Local models and memory needs</a></li>
+    <li><a href="https://techsy.io/en/blog/best-tools-run-llms-locally" target="_blank" rel="noopener">Ollama</a></li>
+    <li><a href="https://offlinetts.com/blog/local-tts-run-ai-voice-synthesis-on-device/" target="_blank" rel="noopener">Offline voice chain</a></li>
+    <li><a href="https://www.promptquorum.com/power-local-llm/best-local-tts-raspberry-pi" target="_blank" rel="noopener">Kokoro and Piper</a></li>
+    <li><a href="https://www.codesota.com/text-to-speech/piper-vs-kokoro" target="_blank" rel="noopener">Piper licence</a></li>
+    <li><a href="https://en.wikipedia.org/wiki/Kiwix" target="_blank" rel="noopener">Kiwix offline Wikipedia</a></li>
+  </ul>
+  <span>Local models change monthly. Treat the named models as today's examples and keep them swappable.</span>
+</footer>
+
+</div>
+
+<script>
+(function(){
+  var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+
+  /* rooms */
+  var tabs=$$('[role="tab"]');
+  tabs.forEach(function(t){t.addEventListener('click',function(){
+    tabs.forEach(function(o){var on=o===t;o.setAttribute('aria-selected',on?'true':'false');document.getElementById(o.getAttribute('aria-controls')).hidden=!on;});
+  });});
+
+  /* steps */
+  var steps=$$('.step'), bodies=$$('.stepbody');
+  steps.forEach(function(s,i){s.addEventListener('click',function(){
+    steps.forEach(function(o,k){o.setAttribute('aria-pressed',k===i?'true':'false')});
+    bodies.forEach(function(b,k){b.hidden=k!==i});
+  });});
+
+  /* RICE */
+  var ideas=[
+    {n:"Solar cold box on the cart",r:400,i:2,c:50,e:6},
+    {n:"Shared cold room at the market",r:1500,i:1,c:80,e:12},
+    {n:"Daily ice-pack delivery",r:600,i:1,c:80,e:2}
+  ];
+  var rice=$('#rice');
+  function opt(vals,sel,suffix){return vals.map(function(v){return '<option value="'+v+'"'+(v===sel?' selected':'')+'>'+v+(suffix||'')+'</option>'}).join('')}
+  rice.innerHTML=ideas.map(function(d,k){
+    return '<div class="rrow"><strong>'+d.n+'</strong>'+
+      '<div class="fld"><label for="rice-r-'+k+'">Reach</label><input id="rice-r-'+k+'" type="number" min="0" step="50" value="'+d.r+'"></div>'+
+      '<div class="fld"><label for="rice-i-'+k+'">Impact</label><select id="rice-i-'+k+'">'+opt([0.25,0.5,1,2,3],d.i)+'</select></div>'+
+      '<div class="fld"><label for="rice-c-'+k+'">Confidence</label><select id="rice-c-'+k+'">'+opt([50,80,100],d.c,'%')+'</select></div>'+
+      '<div class="fld"><label for="rice-e-'+k+'">Effort</label><input id="rice-e-'+k+'" type="number" min="0.5" step="0.5" value="'+d.e+'"></div>'+
+      '<div class="score"><b id="rice-s-'+k+'"></b><div class="bar"><i id="rice-b-'+k+'"></i></div><small id="rice-k-'+k+'"></small></div></div>';
+  }).join('');
+  function num(id){var v=parseFloat(document.getElementById(id).value);return isFinite(v)?v:0}
+  function score(){
+    var s=ideas.map(function(_,k){var e=num('rice-e-'+k);return e>0?num('rice-r-'+k)*num('rice-i-'+k)*(num('rice-c-'+k)/100)/e:0});
+    var max=Math.max.apply(null,s.concat([1]));
+    var order=s.map(function(v,k){return k}).sort(function(a,b){return s[b]-s[a]});
+    var names=['Ranked first','Ranked second','Ranked third'];
+    s.forEach(function(v,k){
+      document.getElementById('rice-s-'+k).textContent=(Math.round(v*10)/10).toLocaleString('en-US');
+      document.getElementById('rice-b-'+k).style.width=(100*v/max)+'%';
+      document.getElementById('rice-k-'+k).textContent=names[order.indexOf(k)];
+    });
+  }
+  rice.addEventListener('input',score); score();
+
+  /* knowledge graph */
+  var W=156,H=38,NS='http://www.w3.org/2000/svg';
+  var nodes={
+    sun:{t:"Sun heats Earth",x:180,y:34,p:"Sunlight carries energy to the surface. In summer the sun sits higher and days are longer, so more of it arrives.",w:"Sunlight"},
+    land:{t:"Land heats faster",x:95,y:112,p:"Water needs far more energy than dry ground to warm by one degree, and it mixes heat downward. Under the same sun, land warms faster than sea.",w:"Specific_heat_capacity"},
+    spin:{t:"Earth spins",x:270,y:112,p:"On a rotating planet, moving air is deflected: to the right in the northern hemisphere. This bends the monsoon winds.",w:"Coriolis_force"},
+    press:{t:"Low pressure on land",x:95,y:190,p:"Warm air expands and rises. Less air is left pressing on the ground, so surface pressure falls over hot land.",w:"Low-pressure_area"},
+    wind:{t:"Sea wind blows inland",x:190,y:268,p:"Air moves from high pressure to low pressure. Cooler air over the ocean flows toward the land and carries water vapour with it.",w:"Monsoon"},
+    rise:{t:"Air rises and cools",x:105,y:346,p:"Air pushed up over hot land and mountains expands as the pressure around it drops. Expanding air cools.",w:"Orographic_lift"},
+    cond:{t:"Vapour condenses",x:235,y:424,p:"Cool air holds less water vapour. Below the dew point, vapour turns into cloud droplets.",w:"Dew_point"},
+    rain:{t:"Monsoon rain",x:150,y:502,p:"Droplets merge until they are heavy enough to fall. The cycle runs for as long as the land stays hotter than the sea.",w:"Rain"}
+  };
+  var edges=[['sun','land'],['land','press'],['press','wind'],['spin','wind'],['wind','rise'],['rise','cond'],['cond','rain']];
+  var svg=$('#graph');
+  function el(n,a){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);return e}
+  edges.forEach(function(e){var a=nodes[e[0]],b=nodes[e[1]];
+    svg.appendChild(el('line',{'class':'gedge',x1:a.x,y1:a.y+H/2,x2:b.x,y2:b.y-H/2-2,'marker-end':'url(#arr)'}));});
+  function pick(id){
+    var n=nodes[id];
+    $$('.gnode',svg).forEach(function(g){var on=g.getAttribute('data-id')===id;g.setAttribute('class','gnode'+(on?' on':''));g.setAttribute('aria-pressed',on?'true':'false')});
+    $('#g-name').textContent=n.t; $('#g-text').textContent=n.p;
+    var rests=edges.filter(function(e){return e[1]===id}).map(function(e){return nodes[e[0]].t});
+    $('#g-rests').textContent=rests.length?rests.join(' + '):'Nothing else. This is a starting fact.';
+    var a=$('#g-link'); a.href='https://en.wikipedia.org/wiki/'+n.w; a.textContent='Wikipedia: '+n.w.replace(/_/g,' ');
+  }
+  Object.keys(nodes).forEach(function(id){var n=nodes[id];
+    var g=el('g',{'class':'gnode','data-id':id,role:'button',tabindex:'0','aria-pressed':'false'});
+    g.appendChild(el('rect',{x:n.x-W/2,y:n.y-H/2,width:W,height:H}));
+    var t=el('text',{x:n.x,y:n.y}); t.textContent=n.t; g.appendChild(t);
+    g.addEventListener('click',function(){pick(id)});
+    g.addEventListener('keydown',function(ev){if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();pick(id)}});
+    svg.appendChild(g);});
+  pick('land');
+
+  /* experts */
+  var IDEA="First three questions on the solar cold box", TOPIC="First three questions on the monsoon";
+  var ex=[
+    {s:"Ph",n:"Physicist",r:"b",l:"Checks an idea against the laws of nature before anything else.",a:"Conservation of energy, heat flow, material limits.",q:["How much heat must leave one crate to keep it cool through an afternoon?","How much energy does a cart-roof panel collect in a day?","Does the second number cover the first once losses are counted?"]},
+    {s:"En",n:"Engineer",r:"b",l:"Looks for the simplest thing that works and the first thing that breaks.",a:"Requirements, constraints, failure modes.",q:["What is the smallest box that proves the cooling works?","Which part fails first on a bumpy road?","Can a local repair shop fix it?"]},
+    {s:"Ec",n:"Economist",r:"b",l:"Asks who pays, and why they would.",a:"Incentives, scarcity, trade-offs.",q:["What does a vendor lose to spoilage in a week?","What would they stop paying for to afford this?","Does renting suit a daily earner better than buying?"]},
+    {s:"Mk",n:"Market analyst",r:"b",l:"Maps everyone who already solves the problem, well or badly.",a:"Alternatives, substitutes, switching costs.",q:["What do vendors use today: ice, wet cloth, selling cheap at dusk?","Who sells cold storage nearby, and to whom?","What would a rival copy first?"]},
+    {s:"Cu",n:"Customer researcher",r:"b",l:"Finds out whose problem this is, exactly.",a:"The jobs people are already trying to get done.",q:["Which vendor feels this most: leafy greens, fish, dairy?","Who decides the purchase, and who uses the box?","Where do these vendors already gather?"]},
+    {s:"Fi",n:"Finance lead",r:"b",l:"Reduces the idea to what one unit costs and earns.",a:"Unit cost, unit revenue, the timing of cash.",q:["What does one box cost to make at a hundred units?","How many days of saved stock pay it back?","What must stay true for the margin to hold?"]},
+    {s:"Lw",n:"Regulator",r:"b",l:"Asks what is permitted and who carries the liability.",a:"Who is allowed, who is responsible.",q:["Do food-safety rules apply to a street cart?","Are batteries allowed in a crowded market?","Who is liable if the stock still spoils?"]},
+    {s:"Sk",n:"Skeptic",r:"b",l:"Tries to end the idea quickly, so you do not spend months on it.",a:"Every claim is an assumption until tested.",q:["What if spoilage is too small to matter?","What if ice is already cheap enough?","Which single fact, if false, ends the idea?"]},
+    {s:"Hi",n:"Historian",r:"l",l:"Explains a subject by how it came to be.",a:"Sources, sequence, cause and consequence.",q:["When did people first time their sowing to the rains?","How did sea trade follow the seasonal winds?","What happened in the years the rains failed?"]},
+    {s:"Pl",n:"Philosopher",r:"l",l:"Asks what we mean and how we know.",a:"Definitions, arguments, evidence.",q:["What counts as explaining rain: a cause, a pattern, a model?","Which parts are observed and which are inferred?","What evidence would change our mind?"]},
+    {s:"Ge",n:"Geographer",r:"l",l:"Asks why here and not there.",a:"Place, climate, terrain, movement.",q:["Why does one coast get far more rain than another?","What do mountains do to a wet wind?","Why does the start date shift from place to place?"]},
+    {s:"Ma",n:"Mathematician",r:"l",l:"Builds the smallest model that still explains the thing.",a:"Definitions, axioms, proof.",q:["What is the simplest model with land, sea and heat?","Which quantity drives the wind?","What does the model predict if the sea warms?"]},
+    {s:"+",n:"New expert",r:"n",l:"Describe any specialist and save them. They join the shelf like the rest, and two experts can share one conversation.",a:"Whatever you write.",q:["Name and domain: one narrow field, stated plainly","Starting principles: the few things this expert never argues with","Questioning style: Socratic, blunt, or patient teacher","Depth: beginner through specialist","Sources allowed: offline library, your files, the web when Online","Voice: which spoken voice it uses"]}
+  ];
+  var tiles=$('#tiles');
+  tiles.innerHTML=ex.map(function(d,k){
+    var tag=d.r==='b'?'<span class="mono b">Build</span>':d.r==='l'?'<span class="mono l">Learn</span>':'<span class="mono">Custom</span>';
+    return '<li><button class="tile'+(d.r==='n'?' new':'')+'" data-k="'+k+'" aria-pressed="false">'+tag+'<span class="sym">'+d.s+'</span><span class="who">'+d.n+'</span></button></li>';
+  }).join('');
+  function showExpert(k){
+    var d=ex[k];
+    $$('.tile',tiles).forEach(function(t){t.setAttribute('aria-pressed',t.getAttribute('data-k')===String(k)?'true':'false')});
+    $('#x-room').textContent=d.r==='b'?'Build room expert':d.r==='l'?'Learn room expert':'Make your own';
+    $('#x-name').textContent=d.n; $('#x-lens').textContent=d.l; $('#x-ax').textContent=d.a;
+    $('#x-on').textContent=d.r==='b'?IDEA:d.r==='l'?TOPIC:'What defines an expert';
+    var ul=$('#x-qs'); ul.textContent='';
+    d.q.forEach(function(q){var li=document.createElement('li');li.textContent=q;ul.appendChild(li)});
+  }
+  tiles.addEventListener('click',function(ev){var b=ev.target.closest('.tile');if(b)showExpert(+b.getAttribute('data-k'))});
+  showExpert(0);
+})();
+</script>
+</body>
+</html>
