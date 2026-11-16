@@ -166,6 +166,7 @@ iframe.demo{width:100%;height:420px;border:1px solid var(--line);background:#fff
     <span class="grow"></span>
     <button id="btn-new">New session</button>
     <button id="btn-sessions">Saved sessions</button>
+    <button id="btn-settings" hidden>Settings</button>
   </header>
   <div class="status" id="status-chips" aria-live="polite"></div>
   <div class="banner" id="banner" hidden></div>
@@ -173,6 +174,20 @@ iframe.demo{width:100%;height:420px;border:1px solid var(--line);background:#fff
   <section class="drawer" id="drawer" hidden>
     <div class="row"><h2 class="grow">Saved sessions</h2><button id="btn-close-drawer">Close</button></div>
     <div id="sess-list" class="stack"></div>
+  </section>
+
+  <section class="drawer" id="settings" hidden>
+    <div class="row"><h2 class="grow">Settings</h2><button id="btn-close-settings">Close</button></div>
+    <p class="muted">This copy runs on its own, so it needs a brain. Pick one. Your choice is kept in this browser only.</p>
+    <div class="form">
+      <label class="wide"><span class="mono">Brain</span><select id="set-brain"><option value="ollama">Local model on this PC (Ollama): free and offline</option><option value="api">Claude through your own API key: online and paid per use</option></select></label>
+      <label id="row-ollama-url"><span class="mono">Ollama address</span><input id="set-ollama-url" placeholder="http://localhost:11434"></label>
+      <label id="row-ollama-model"><span class="mono">Ollama model</span><input id="set-ollama-model" placeholder="qwen3:14b"></label>
+      <label id="row-api-key"><span class="mono">API key</span><input id="set-api-key" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
+      <label id="row-api-model"><span class="mono">Claude model</span><input id="set-api-model" placeholder="claude-sonnet-5-5"></label>
+      <div class="row wide"><button class="primary" id="set-save">Save</button><button id="set-test">Test the connection</button><span id="set-msg" class="muted" aria-live="polite"></span></div>
+    </div>
+    <p class="muted" id="set-help"></p>
   </section>
 
   <div class="viewtabs" role="group" aria-label="View">
@@ -293,22 +308,69 @@ function saveCustom(){ if(dbCol) saving=saving.then(function(){ return dbCol.doc
 
 /* ---------- capabilities ---------- */
 function use(n){ try{ return (window.claude&&window.claude.use)?window.claude.use(n).catch(function(){return null}):Promise.resolve(null) }catch(e){ return Promise.resolve(null) } }
+/* ---------- standalone: own brain, browser ears and voice ---------- */
+var INSIDE=!!(window.claude&&window.claude.use);
+function cfg(){ var c=lsGet('fps.settings',null)||{}; return {set:!!c.brain,brain:c.brain||'ollama',ollamaUrl:(c.ollamaUrl||'http://localhost:11434').replace(/\/+$/,''),ollamaModel:c.ollamaModel||'qwen3:14b',apiKey:c.apiKey||'',apiModel:c.apiModel||'claude-sonnet-5-5'}; }
+function brainName(){ var c=cfg(); return !c.set?'not set up':c.brain==='api'?'Claude API, '+c.apiModel:'Ollama, '+c.ollamaModel }
+function fail(msg){ return {code:'setup',message:msg} }
+function split(input){ var m=typeof input==='string'?[{role:'user',content:input}]:input.slice(),sys=''; if(m.length>1&&m[0].role==='user'){ sys=m[0].content; m=m.slice(1); } return {sys:sys,msgs:m}; }
+async function eachLine(res,onLine){ var rd=res.body.getReader(),dec=new TextDecoder(),buf='',r,i; for(;;){ r=await rd.read(); if(r.done) break; buf+=dec.decode(r.value,{stream:true}); while((i=buf.indexOf('\n'))>=0){ onLine(buf.slice(0,i)); buf=buf.slice(i+1); } } if(buf.trim()) onLine(buf); }
+async function ollama(input,opts,json){
+  var c=cfg(),p=split(input),text='',res;
+  var body={model:c.ollamaModel,stream:true,messages:(p.sys?[{role:'system',content:p.sys}]:[]).concat(p.msgs)}; if(json) body.format='json';
+  try{ res=await fetch(c.ollamaUrl+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:opts.signal}); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled'}; throw fail('Could not reach Ollama at '+c.ollamaUrl+'. Check that Ollama is running on this PC and that its OLLAMA_ORIGINS setting allows this page.'); }
+  if(!res.ok) throw fail(res.status===404?'Ollama does not have the model "'+c.ollamaModel+'". Download it first, or change the model in Settings.':res.status===403?'Ollama refused this page. Set OLLAMA_ORIGINS to allow it, then restart Ollama.':'Ollama answered with an error ('+res.status+').');
+  try{ await eachLine(res,function(l){ if(!l.trim()) return; var o=JSON.parse(l); if(o.message&&o.message.content){ text+=o.message.content; if(opts.onText) opts.onText({text:text,delta:o.message.content}); } }); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled',text:text}; throw fail('The answer from Ollama was cut off.'); }
+  return {text:text,truncated:false};
+}
+async function claudeApi(input,opts,json){
+  var c=cfg(),p=split(input),text='',stopped='',res;
+  if(!c.apiKey) throw fail('Add your API key in Settings first.');
+  var body={model:c.apiModel,max_tokens:4000,stream:true,messages:p.msgs}; if(p.sys) body.system=p.sys;
+  try{ res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':c.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify(body),signal:opts.signal}); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled'}; throw fail('Could not reach the Claude API. Check the internet connection.'); }
+  if(!res.ok) throw fail(res.status===401?'The API key was not accepted. Check it in Settings.':res.status===404?'The API does not know the model "'+c.apiModel+'". Check the model name in Settings.':res.status===429?'The API is rate limiting this key. Wait a moment and try again.':'The Claude API answered with an error ('+res.status+').');
+  try{ await eachLine(res,function(l){ if(l.slice(0,5)!=='data:') return; var o; try{ o=JSON.parse(l.slice(5)) }catch(e){ return } if(o.type==='content_block_delta'&&o.delta&&o.delta.text){ text+=o.delta.text; if(opts.onText) opts.onText({text:text,delta:o.delta.text}); } if(o.type==='message_delta'&&o.delta&&o.delta.stop_reason) stopped=o.delta.stop_reason; }); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled',text:text}; throw fail('The answer from the Claude API was cut off.'); }
+  return {text:text,truncated:stopped==='max_tokens'};
+}
+function parseJson(t){ t=String(t||''); try{ return JSON.parse(t) }catch(e){} var a=t.search(/[\[{]/),b=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']')); if(a>=0&&b>a){ try{ return JSON.parse(t.slice(a,b+1)) }catch(e){} } throw {code:'invalid_json',text:t}; }
+function ownBrain(){ var c=cfg(); if(!c.set) return null; var f=c.brain==='api'?claudeApi:ollama;
+  var s=function(input,opts){ return f(input,opts||{},false) }; s.json=async function(input,opts){ return parseJson((await f(input,opts||{},true)).text) }; return s; }
+function browserEars(){
+  var R=window.SpeechRecognition||window.webkitSpeechRecognition; if(!R) return null;
+  var rec=null,hp=[],hf=[],hs=[],on=false;
+  function st(state,reason){ hs.forEach(function(f){ f({state:state,reason:reason}) }) }
+  return {onPartial:function(f){hp.push(f)},onFinal:function(f){hf.push(f)},onState:function(f){hs.push(f)},active:function(){return on},
+    start:function(){ return new Promise(function(ok,no){ try{ rec=new R(); rec.continuous=true; rec.interimResults=true;
+      rec.onstart=function(){ on=true; st('listening'); ok(); };
+      rec.onresult=function(ev){ var interim='',i,r; for(i=ev.resultIndex;i<ev.results.length;i++){ r=ev.results[i]; if(r.isFinal) final(r[0].transcript); else interim+=r[0].transcript; } if(interim) hp.forEach(function(f){ f({text:interim.trim()}) }); };
+      rec.onerror=function(ev){ if(ev.error==='not-allowed'||ev.error==='service-not-allowed'){ on=false; st('idle','not_granted'); no({code:'not_granted'}); } };
+      rec.onend=function(){ if(on){ on=false; st('idle','stopped'); } };
+      rec.start(); }catch(e){ no({code:'unavailable'}) } }) },
+    stop:function(){ return new Promise(function(ok){ if(!rec||!on){ ok(); return; } rec.onend=function(){ on=false; st('idle','stopped'); ok(); }; try{ rec.stop() }catch(e){ on=false; st('idle','stopped'); ok(); } }) }};
+  function final(t){ hf.forEach(function(f){ f({text:String(t).trim()}) }) }
+}
+function fileSaver(){ return {save:function(o){ return new Promise(function(ok){ var a=document.createElement('a'),u=URL.createObjectURL(new Blob([o.data],{type:'text/markdown'})); a.href=u; a.download=o.filename; document.body.append(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u) },2000); ok({status:'saved'}); }) }} }
+function standIn(n){ return n==='sample'?ownBrain():n==='dictation'?browserEars():n==='downloads'?fileSaver():null }
 var saveNote='';
 function chips(note){
   if(note!=null) saveNote=note;
   var box=$('#status-chips'); box.textContent='';
   function chip(k,v){ box.append(h('span',{class:'chip'},k+' ',h('b',{text:v}))) }
-  chip('Brain',!ready.sample?'connecting…':cap.sample?'Claude, online':'not available');
-  chip('Ears',!ready.dictation?'connecting…':cap.dictation?'voice on':'typing only');
+  chip('Brain',!ready.sample?'connecting…':INSIDE?(cap.sample?'Claude, online':'not available'):brainName());
+  chip('Ears',!ready.dictation?'connecting…':cap.dictation?(INSIDE?'voice on':'browser speech'):'typing only');
   chip('Voice',!ready.tts?'connecting…':cap.tts?'Claude voice':(window.speechSynthesis?'browser voice':'text only'));
   chip('Saved to',!loaded?'connecting…':dbCol?'your private space':'this browser');
   if(saveNote) chip('Status',saveNote);
   var b=$('#banner');
-  if(ready.sample&&!cap.sample){ b.hidden=false; b.textContent='The model is not reachable in this view, so the experts cannot answer. Open this page in Claude in a desktop browser and allow it to ask Claude.'; }
+  if(ready.sample&&!cap.sample){ b.hidden=false; b.textContent=INSIDE?'The model is not reachable in this view, so the experts cannot answer. Open this page in Claude in a desktop browser and allow it to ask Claude.':'This copy needs a brain before the experts can answer. Open Settings and choose a local model or an API key.'; }
   else b.hidden=true;
 }
 function boot(){
-  ['sample','dictation','tts','downloads'].forEach(function(n){ use(n).then(function(ns){ cap[n]=ns; ready[n]=true; if(n==='dictation') wireDictation(); chips(); renderScribe(); }) });
+  ['sample','dictation','tts','downloads'].forEach(function(n){ use(n).then(function(ns){ cap[n]=ns||(INSIDE?null:standIn(n)); ready[n]=true; if(n==='dictation') wireDictation(); chips(); renderScribe(); }) });
   Promise.all([use('db'),use('user')]).then(async function(r){
     try{ uid=r[1]?await r[1].id():null }catch(e){ uid=null }
     if(r[0]&&uid){ try{
@@ -330,6 +392,7 @@ function errText(e){
   if(c==='cancelled') return 'Stopped.';
   if(c==='invalid_json') return 'The answer came back in the wrong shape. Try again.';
   if(c==='refused') return 'Claude declined that request.';
+  if(c==='setup') return e.message;
   return 'That did not work'+(e&&e.message?': '+e.message:'.')+' Try again.';
 }
 function contextNotes(){
@@ -356,7 +419,7 @@ function setState(t){ $('#state').textContent=t||'' }
 function setBusy(b){ busy=b; $('#btn-send').disabled=b; $('#btn-stop').hidden=!b; }
 async function send(text){
   text=String(text||'').trim(); if(!text||busy) return;
-  if(!cap.sample){ setState(ready.sample?'The model is not available in this view.':'Still connecting. Try again in a moment.'); return; }
+  if(!cap.sample){ setState(!ready.sample?'Still connecting. Try again in a moment.':INSIDE?'The model is not available in this view.':'Choose a brain in Settings first.'); return; }
   stopSpeech();
   var ex=expert(S.expertId), turn={who:'expert',ex:ex.id,name:ex.name,text:''};
   S.turns.push({who:'you',text:text}); if(!S.title) S.title=text.slice(0,70);
@@ -480,7 +543,7 @@ function runFit(k){ return ask('fit-'+k,HEAD+ctx()+FITS[k].shape,function(o){ if
 function runScore(){
   var names=S.score.map(function(r){return r.name}).filter(Boolean); if(!names.length) names=S.notes.ideas.length?S.notes.ideas.slice():[S.title||'The idea'];
   return ask('score',HEAD+ctx()+'Score each of these ideas with RICE: '+JSON.stringify(names)+'\nreach = people reached per quarter (a number), impact = one of 0.25, 0.5, 1, 2, 3, confidence = one of 50, 80, 100 (percent), effort = person-months (a number), why = one sentence on the basis. These are first estimates for the person to edit.\nReply with only a JSON array of exactly this shape:\n[{"name":"","reach":0,"impact":1,"confidence":50,"effort":1,"why":""}]',
-   function(o){ var rows=arr(o).filter(function(r){return r&&r.name}).slice(0,6).map(function(r){ return {name:String(r.name).slice(0,80),reach:+r.reach||0,impact:+r.impact||1,confidence:+r.confidence||50,effort:+r.effort||1,why:String(r.why||'')} }); if(rows.length) S.score=rows; });
+   function(o){ if(o&&!Array.isArray(o)) o=Object.keys(o).map(function(k){return o[k]}).filter(Array.isArray)[0]; var rows=arr(o).filter(function(r){return r&&r.name}).slice(0,6).map(function(r){ return {name:String(r.name).slice(0,80),reach:+r.reach||0,impact:+r.impact||1,confidence:+r.confidence||50,effort:+r.effort||1,why:String(r.why||'')} }); if(rows.length) S.score=rows; });
 }
 function rice(r){ return r.effort>0?r.reach*r.impact*(r.confidence/100)/r.effort:0 }
 function runVerdict(){
@@ -674,6 +737,19 @@ $('#xf-save').addEventListener('click',function(){
   var x={id:'c'+Date.now().toString(36),s:name.slice(0,2),name:name,room:'own',field:field,lens:'Your own specialist in '+field+'.',axioms:ax||'The established basics of '+field+'.',style:$('#xf-style').value,voice:$('#xf-voice').value};
   custom.push(x); saveCustom(); S.expertId=x.id; $('#xf-err').textContent=''; ['xf-name','xf-field','xf-axioms'].forEach(function(i){ $('#'+i).value='' }); $('#expert-form').hidden=true; renderExperts();
 });
+function pickBrain(){ var api=$('#set-brain').value==='api'; ['row-ollama-url','row-ollama-model'].forEach(function(i){ $('#'+i).hidden=api }); ['row-api-key','row-api-model'].forEach(function(i){ $('#'+i).hidden=!api });
+  $('#set-help').textContent=api?'The key is stored in this browser only and is sent straight to the Claude API. Anyone who can use this browser profile can read it, so use a key with a spending limit. Each answer costs a small amount.':'Install Ollama on this PC and download a model, for example by running "ollama pull qwen3:14b". Ollama only answers pages it has been told to trust, so set its OLLAMA_ORIGINS setting to allow this page and restart it. Nothing you say to the expert leaves the PC. Voice input uses the browser\'s speech recognition, which in Chrome is an online service; typing works fully offline.'; }
+function showSettings(){ var c=cfg(); $('#set-brain').value=c.brain; $('#set-ollama-url').value=c.ollamaUrl; $('#set-ollama-model').value=c.ollamaModel; $('#set-api-key').value=c.apiKey; $('#set-api-model').value=c.apiModel; $('#set-msg').textContent=''; pickBrain(); }
+function saveSettings(){ lsSet('fps.settings',{brain:$('#set-brain').value,ollamaUrl:$('#set-ollama-url').value.trim(),ollamaModel:$('#set-ollama-model').value.trim(),apiKey:$('#set-api-key').value.trim(),apiModel:$('#set-api-model').value.trim()}); cap.sample=ownBrain(); chips(); renderScribe(); }
+if(!INSIDE){
+  $('#btn-settings').hidden=false;
+  $('#btn-settings').addEventListener('click',function(){ var d=$('#settings'); d.hidden=!d.hidden; if(!d.hidden) showSettings(); });
+  $('#btn-close-settings').addEventListener('click',function(){ $('#settings').hidden=true });
+  $('#set-brain').addEventListener('change',pickBrain);
+  $('#set-save').addEventListener('click',function(){ saveSettings(); $('#set-msg').textContent='Saved.'; });
+  $('#set-test').addEventListener('click',async function(){ saveSettings(); var m=$('#set-msg'); m.textContent='Testing…';
+    try{ var r=await cap.sample('Reply with the single word: ready',{}); m.textContent='Connected. The brain answered: '+String(r.text).trim().slice(0,40); }catch(e){ m.textContent=errText(e); } });
+}
 setView('talk'); chips(); renderAll(); boot();
 })();
 </script>
