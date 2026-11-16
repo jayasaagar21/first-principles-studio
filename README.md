@@ -1,10 +1,38 @@
 # First Principles Studio
 
-*Working name. Concept stage: this repository holds the product blueprint, not application code yet.*
+*Working name. This repository holds the product blueprint and the first working version of the app.*
 
 An offline, voice-first assistant for first-principles research. You talk to a specialist expert bot out loud. A second, silent agent (the Scribe) listens to the whole conversation and turns it into a block diagram, research, a score, a verdict and a document. Everything runs on your own PC, with an optional Online switch.
 
 **Open [`index.html`](index.html) in a browser for the interactive blueprint.**
+
+## What is here
+
+| File | What it is |
+|---|---|
+| [`index.html`](index.html) | The interactive blueprint: five figures that explain the whole product. Opens in any browser. |
+| [`app.html`](app.html) | The first working version of the app, in one file. |
+
+### The working app
+
+`app.html` does what the blueprint describes: you talk to an expert by voice or text, it answers aloud, and the Scribe keeps structured notes, draws the block diagram or knowledge graph, runs the three fits, scores ideas with RICE, gives a verdict and writes the report. Sessions are saved and can be reopened.
+
+This version runs as a page inside Claude. Its brain, ears and voice come from that page runtime (`window.claude`), so:
+
+- Opened there, everything works, online.
+- Opened as a plain file, the screens load but the experts cannot answer, because there is no model behind them.
+
+Three things in it are deliberately different from the original description:
+
+- It is online. The offline build needs local models (see "Offline first").
+- The three fits come from the model's general knowledge, not a live web search. Each one lists what to verify.
+- Wikipedia and YouTube links are search links, so a link can never be invented.
+
+### Next
+
+1. A standalone build with its own brain: a local model through Ollama, or your own API key, plus the browser's speech features.
+2. An Android APK of that build.
+3. A browser extension of that build.
 
 ## The loop
 
