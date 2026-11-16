@@ -17,22 +17,28 @@ An offline, voice-first assistant for first-principles research. You talk to a s
 
 `app.html` does what the blueprint describes: you talk to an expert by voice or text, it answers aloud, and the Scribe keeps structured notes, draws the block diagram or knowledge graph, runs the three fits, scores ideas with RICE, gives a verdict and writes the report. Sessions are saved and can be reopened.
 
-This version runs as a page inside Claude. Its brain, ears and voice come from that page runtime (`window.claude`), so:
+It runs in two ways:
 
-- Opened there, everything works, online.
-- Opened as a plain file, the screens load but the experts cannot answer, because there is no model behind them.
+- **Inside Claude, as a page.** The brain, ears and voice come from Claude. Nothing to set up.
+- **On its own.** Download `app.html`, open it in Chrome or Edge, then open Settings and pick a brain: a local model through Ollama (free and offline), or Claude through your own API key (online, paid per use). You can switch at any time. Voice uses the browser's speech features, and sessions are saved in the browser.
+
+Notes for running it on its own:
+
+- Ollama only answers pages it trusts. Set its `OLLAMA_ORIGINS` setting to allow the page, then restart Ollama.
+- An API key typed into Settings is stored in that browser only and sent straight to the Claude API. Use a key with a spending limit.
+- In Chrome, voice input is an online service even when the brain is local. Typing works fully offline.
 
 Three things in it are deliberately different from the original description:
 
-- It is online. The offline build needs local models (see "Offline first").
+- Offline needs the Ollama brain. Inside Claude, or with an API key, it is online.
 - The three fits come from the model's general knowledge, not a live web search. Each one lists what to verify.
 - Wikipedia and YouTube links are search links, so a link can never be invented.
 
 ### Next
 
-1. A standalone build with its own brain: a local model through Ollama, or your own API key, plus the browser's speech features.
-2. An Android APK of that build.
-3. A browser extension of that build.
+1. An Android APK.
+2. A browser extension.
+3. Offline speech recognition and offline Wikipedia, as in the blueprint.
 
 ## The loop
 
