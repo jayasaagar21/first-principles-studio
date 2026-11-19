@@ -1,0 +1,565 @@
+(function(){
+'use strict';
+var $=function(s,r){return (r||document).querySelector(s)};
+function h(tag,attrs){
+  var e=document.createElement(tag),k,v,i,c;
+  if(attrs) for(k in attrs){ v=attrs[k]; if(v==null||v===false) continue;
+    if(k==='text') e.textContent=v; else if(k==='class') e.className=v;
+    else if(k.slice(0,2)==='on') e.addEventListener(k.slice(2),v);
+    else if(k==='hidden') e.hidden=true; else if(k==='value') e.value=v; else if(k==='style') e.style.cssText=v;
+    else e.setAttribute(k,v===true?'':v); }
+  for(i=2;i<arguments.length;i++){ c=arguments[i]; if(c==null||c===false) continue;
+    if(Array.isArray(c)) c.forEach(function(x){ if(x!=null&&x!==false) e.append(x) }); else e.append(c); }
+  return e;
+}
+function lsGet(k,d){ try{ var v=localStorage.getItem(k); return v==null?d:JSON.parse(v) }catch(e){ return d } }
+function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)) }catch(e){} }
+function arr(x){ return Array.isArray(x)?x:[] }
+function strs(x,n){ return arr(x).filter(function(s){return typeof s==='string'&&s.trim()}).map(function(s){return s.trim()}).slice(0,n) }
+function human(k){ return String(k).replace(/_/g,' ').replace(/^./,function(c){return c.toUpperCase()}) }
+
+/* ---------- experts ---------- */
+var EXPERTS=[
+ {id:'physicist',s:'Ph',name:'Physicist',room:'build',field:'physics and energy',lens:'Checks an idea against the laws of nature before anything else.',axioms:'Conservation of energy, heat flow, material limits.',voice:'glassy'},
+ {id:'engineer',s:'En',name:'Engineer',room:'build',field:'product engineering',lens:'Looks for the simplest thing that works and the first thing that breaks.',axioms:'Requirements, constraints, failure modes.',voice:'rounded'},
+ {id:'economist',s:'Ec',name:'Economist',room:'build',field:'economics',lens:'Asks who pays, and why they would.',axioms:'Incentives, scarcity, trade-offs.',voice:'buttery'},
+ {id:'market',s:'Mk',name:'Market analyst',room:'build',field:'market and competitor analysis',lens:'Maps everyone who already solves the problem, well or badly.',axioms:'Alternatives, substitutes, switching costs.',voice:'airy'},
+ {id:'customer',s:'Cu',name:'Customer researcher',room:'build',field:'customer research',lens:'Finds out whose problem this is, exactly.',axioms:'The jobs people are already trying to get done.',voice:'airy'},
+ {id:'finance',s:'Fi',name:'Finance lead',room:'build',field:'unit economics and finance',lens:'Reduces the idea to what one unit costs and earns.',axioms:'Unit cost, unit revenue, the timing of cash.',voice:'rounded'},
+ {id:'regulator',s:'Lw',name:'Regulator',room:'build',field:'regulation and liability',lens:'Asks what is permitted and who carries the liability.',axioms:'Who is allowed, who is responsible.',voice:'glassy'},
+ {id:'skeptic',s:'Sk',name:'Skeptic',room:'build',field:'critical review of ideas',lens:'Tries to end the idea quickly, so you do not spend months on it.',axioms:'Every claim is an assumption until tested.',voice:'buttery'},
+ {id:'historian',s:'Hi',name:'Historian',room:'learn',field:'history',lens:'Explains a subject by how it came to be.',axioms:'Sources, sequence, cause and consequence.',voice:'buttery'},
+ {id:'philosopher',s:'Pl',name:'Philosopher',room:'learn',field:'philosophy',lens:'Asks what we mean and how we know.',axioms:'Definitions, arguments, evidence.',voice:'rounded'},
+ {id:'geographer',s:'Ge',name:'Geographer',room:'learn',field:'geography and earth science',lens:'Asks why here and not there.',axioms:'Place, climate, terrain, movement.',voice:'airy'},
+ {id:'mathematician',s:'Ma',name:'Mathematician',room:'learn',field:'mathematics',lens:'Builds the smallest model that still explains the thing.',axioms:'Definitions, axioms, proof.',voice:'glassy'},
+ {id:'scientist',s:'Sc',name:'Scientist',room:'learn',field:'natural science',lens:'Explains how things work from observation and experiment.',axioms:'Evidence, mechanism, what an experiment could show.',voice:'rounded'},
+ {id:'generalist',s:'Gn',name:'Generalist tutor',room:'learn',field:'any subject',lens:'Starts from zero and builds any topic one step at a time.',axioms:'Start from what cannot be reduced further.',voice:'buttery'}
+];
+var custom=[];
+function allExperts(){ return EXPERTS.concat(custom) }
+function expert(id){ return allExperts().filter(function(x){return x.id===id})[0]||EXPERTS[0] }
+
+/* ---------- state ---------- */
+var cap={}, ready={}, uid=null, dbCol=null, sessions=[], loaded=false;
+var S, busy=false, ctrl=null, work={}, errs={}, tab={build:'Principles',learn:'Graph'}, pickNode=null;
+var scribeBusy=false, scribeDirty=false, saveTimer=null, saving=Promise.resolve(), dictBase='', listening=false;
+function newSession(mode){
+  return {id:'s'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),mode:mode,title:'',
+    expertId:mode==='learn'?'generalist':'physicist',depth:'Working knowledge',created:Date.now(),updated:Date.now(),turns:[],
+    notes:{facts:[],assumptions:[],questions:[],diagram:{nodes:[],edges:[]},ideas:[]},
+    graph:{nodes:[],edges:[]},fits:{},score:[],verdict:null,decision:'',demo:''};
+}
+S=newSession('build');
+
+/* ---------- storage ---------- */
+function upsert(){ var i=sessions.findIndex(function(x){return x.id===S.id}); var c=JSON.parse(JSON.stringify(S)); if(i<0) sessions.unshift(c); else sessions[i]=c; }
+function touch(){
+  S.updated=Date.now(); if(!S.turns.length) return; upsert();
+  clearTimeout(saveTimer); saveTimer=setTimeout(persist,800); chips('Saving…');
+}
+function persist(){
+  var snap=JSON.parse(JSON.stringify(S));
+  if(dbCol){ saving=saving.then(function(){ return dbCol.doc(snap.id).set(snap) }).then(function(){ chips('Saved') },function(){ chips('Could not save') }); }
+  else { lsSet('fps.sessions',sessions.slice(0,30)); chips('Saved'); }
+}
+function removeSession(id){
+  sessions=sessions.filter(function(x){return x.id!==id});
+  if(dbCol) saving=saving.then(function(){ return dbCol.doc(id).delete() }).catch(function(){});
+  else lsSet('fps.sessions',sessions);
+  if(S.id===id){ S=newSession(S.mode); renderAll(); }
+  renderSessions();
+}
+function saveCustom(){ if(dbCol) saving=saving.then(function(){ return dbCol.doc('experts').set({list:custom}) }).catch(function(){}); else lsSet('fps.experts',custom); }
+
+/* ---------- capabilities ---------- */
+function use(n){ try{ return (window.claude&&window.claude.use)?window.claude.use(n).catch(function(){return null}):Promise.resolve(null) }catch(e){ return Promise.resolve(null) } }
+/* ---------- standalone: own brain, browser ears and voice ---------- */
+var INSIDE=!!(window.claude&&window.claude.use);
+function cfg(){ var c=lsGet('fps.settings',null)||{}; return {set:!!c.brain,brain:c.brain||'ollama',ollamaUrl:(c.ollamaUrl||'http://localhost:11434').replace(/\/+$/,''),ollamaModel:c.ollamaModel||'qwen3:14b',apiKey:c.apiKey||'',apiModel:c.apiModel||'claude-sonnet-5-5',geminiKey:c.geminiKey||'',geminiModel:c.geminiModel||'gemini-2.5-flash'}; }
+function brainName(){ var c=cfg(); return !c.set?'not set up':c.brain==='gemini'?'Gemini API, '+c.geminiModel:c.brain==='api'?'Claude API, '+c.apiModel:'Ollama, '+c.ollamaModel }
+function fail(msg){ return {code:'setup',message:msg} }
+function split(input){ var m=typeof input==='string'?[{role:'user',content:input}]:input.slice(),sys=''; if(m.length>1&&m[0].role==='user'){ sys=m[0].content; m=m.slice(1); } return {sys:sys,msgs:m}; }
+async function eachLine(res,onLine){ var rd=res.body.getReader(),dec=new TextDecoder(),buf='',r,i; for(;;){ r=await rd.read(); if(r.done) break; buf+=dec.decode(r.value,{stream:true}); while((i=buf.indexOf('\n'))>=0){ onLine(buf.slice(0,i)); buf=buf.slice(i+1); } } if(buf.trim()) onLine(buf); }
+async function ollama(input,opts,json){
+  var c=cfg(),p=split(input),text='',res;
+  var body={model:c.ollamaModel,stream:true,messages:(p.sys?[{role:'system',content:p.sys}]:[]).concat(p.msgs)}; if(json) body.format='json';
+  try{ res=await fetch(c.ollamaUrl+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:opts.signal}); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled'}; throw fail('Could not reach Ollama at '+c.ollamaUrl+'. Check that Ollama is running on this PC and that its OLLAMA_ORIGINS setting allows this page.'); }
+  if(!res.ok) throw fail(res.status===404?'Ollama does not have the model "'+c.ollamaModel+'". Download it first, or change the model in Settings.':res.status===403?'Ollama refused this page. Set OLLAMA_ORIGINS to allow it, then restart Ollama.':'Ollama answered with an error ('+res.status+').');
+  try{ await eachLine(res,function(l){ if(!l.trim()) return; var o=JSON.parse(l); if(o.message&&o.message.content){ text+=o.message.content; if(opts.onText) opts.onText({text:text,delta:o.message.content}); } }); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled',text:text}; throw fail('The answer from Ollama was cut off.'); }
+  return {text:text,truncated:false};
+}
+async function claudeApi(input,opts,json){
+  var c=cfg(),p=split(input),text='',stopped='',res;
+  if(!c.apiKey) throw fail('Add your API key in Settings first.');
+  var body={model:c.apiModel,max_tokens:4000,stream:true,messages:p.msgs}; if(p.sys) body.system=p.sys;
+  try{ res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':c.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify(body),signal:opts.signal}); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled'}; throw fail('Could not reach the Claude API. Check the internet connection.'); }
+  if(!res.ok) throw fail(res.status===401?'The API key was not accepted. Check it in Settings.':res.status===404?'The API does not know the model "'+c.apiModel+'". Check the model name in Settings.':res.status===429?'The API is rate limiting this key. Wait a moment and try again.':'The Claude API answered with an error ('+res.status+').');
+  try{ await eachLine(res,function(l){ if(l.slice(0,5)!=='data:') return; var o; try{ o=JSON.parse(l.slice(5)) }catch(e){ return } if(o.type==='content_block_delta'&&o.delta&&o.delta.text){ text+=o.delta.text; if(opts.onText) opts.onText({text:text,delta:o.delta.text}); } if(o.type==='message_delta'&&o.delta&&o.delta.stop_reason) stopped=o.delta.stop_reason; }); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled',text:text}; throw fail('The answer from the Claude API was cut off.'); }
+  return {text:text,truncated:stopped==='max_tokens'};
+}
+async function geminiApi(input,opts,json){
+  var c=cfg(),p=split(input),text='',fin='',res;
+  if(!c.geminiKey) throw fail('Add your Gemini API key in Settings first.');
+  var body={contents:p.msgs.map(function(m){ return {role:m.role==='assistant'?'model':'user',parts:[{text:String(m.content)}]} }),generationConfig:{maxOutputTokens:4000}};
+  if(p.sys) body.systemInstruction={parts:[{text:p.sys}]};
+  if(json) body.generationConfig.responseMimeType='application/json';
+  var url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(c.geminiModel)+':streamGenerateContent?alt=sse';
+  try{ res=await fetch(url,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':c.geminiKey},body:JSON.stringify(body),signal:opts.signal}); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled'}; throw fail('Could not reach the Gemini API. Check the internet connection.'); }
+  if(!res.ok) throw fail(res.status===400||res.status===401||res.status===403?'Gemini did not accept the API key. Check it in Settings.':res.status===404?'The Gemini API does not know the model "'+c.geminiModel+'". Check the model name in Settings.':res.status===429?'The Gemini API is rate limiting this key or has used its quota. Wait a moment and try again.':'The Gemini API answered with an error ('+res.status+').');
+  try{ await eachLine(res,function(l){ if(l.slice(0,5)!=='data:') return; var o; try{ o=JSON.parse(l.slice(5)) }catch(e){ return } var cand=o.candidates&&o.candidates[0]; if(!cand) return; ((cand.content&&cand.content.parts)||[]).forEach(function(pt){ if(pt.text){ text+=pt.text; if(opts.onText) opts.onText({text:text,delta:pt.text}); } }); if(cand.finishReason) fin=cand.finishReason; }); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled',text:text}; throw fail('The answer from Gemini was cut off.'); }
+  return {text:text,truncated:fin==='MAX_TOKENS'};
+}
+function parseJson(t){ t=String(t||''); try{ return JSON.parse(t) }catch(e){} var a=t.search(/[\[{]/),b=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']')); if(a>=0&&b>a){ try{ return JSON.parse(t.slice(a,b+1)) }catch(e){} } throw {code:'invalid_json',text:t}; }
+function ownBrain(){ var c=cfg(); if(!c.set) return null; var f=c.brain==='gemini'?geminiApi:c.brain==='api'?claudeApi:ollama;
+  var s=function(input,opts){ return f(input,opts||{},false) }; s.json=async function(input,opts){ return parseJson((await f(input,opts||{},true)).text) }; return s; }
+function browserEars(){
+  var R=window.SpeechRecognition||window.webkitSpeechRecognition; if(!R) return null;
+  var rec=null,hp=[],hf=[],hs=[],on=false;
+  function st(state,reason){ hs.forEach(function(f){ f({state:state,reason:reason}) }) }
+  return {onPartial:function(f){hp.push(f)},onFinal:function(f){hf.push(f)},onState:function(f){hs.push(f)},active:function(){return on},
+    start:function(){ return new Promise(function(ok,no){ try{ rec=new R(); rec.continuous=true; rec.interimResults=true;
+      rec.onstart=function(){ on=true; st('listening'); ok(); };
+      rec.onresult=function(ev){ var interim='',i,r; for(i=ev.resultIndex;i<ev.results.length;i++){ r=ev.results[i]; if(r.isFinal) final(r[0].transcript); else interim+=r[0].transcript; } if(interim) hp.forEach(function(f){ f({text:interim.trim()}) }); };
+      rec.onerror=function(ev){ if(ev.error==='not-allowed'||ev.error==='service-not-allowed'){ on=false; st('idle','not_granted'); no({code:'not_granted'}); } };
+      rec.onend=function(){ if(on){ on=false; st('idle','stopped'); } };
+      rec.start(); }catch(e){ no({code:'unavailable'}) } }) },
+    stop:function(){ return new Promise(function(ok){ if(!rec||!on){ ok(); return; } rec.onend=function(){ on=false; st('idle','stopped'); ok(); }; try{ rec.stop() }catch(e){ on=false; st('idle','stopped'); ok(); } }) }};
+  function final(t){ hf.forEach(function(f){ f({text:String(t).trim()}) }) }
+}
+function crc32u(b){ var t=crc32u.t; if(!t){ t=crc32u.t=[]; for(var n=0;n<256;n++){ var k=n; for(var j=0;j<8;j++) k=k&1?(0xEDB88320^(k>>>1)):(k>>>1); t[n]=k>>>0; } } var c=0xFFFFFFFF; for(var i=0;i<b.length;i++) c=t[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function zipStore(files){ var enc=new TextEncoder(), parts=[], central=[], off=0, total=0;
+  files.forEach(function(f){ var nb=enc.encode(f.name), d=f.data, crc=crc32u(d);
+    var lh=new DataView(new ArrayBuffer(30)); lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true); lh.setUint16(8,0,true); lh.setUint16(10,0,true); lh.setUint16(12,0x21,true); lh.setUint32(14,crc,true); lh.setUint32(18,d.length,true); lh.setUint32(22,d.length,true); lh.setUint16(26,nb.length,true); lh.setUint16(28,0,true);
+    parts.push(new Uint8Array(lh.buffer),nb,d);
+    var ch=new DataView(new ArrayBuffer(46)); ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true); ch.setUint16(10,0,true); ch.setUint16(12,0,true); ch.setUint16(14,0x21,true); ch.setUint32(16,crc,true); ch.setUint32(20,d.length,true); ch.setUint32(24,d.length,true); ch.setUint16(28,nb.length,true); ch.setUint32(42,off,true);
+    central.push(new Uint8Array(ch.buffer),nb); off+=30+nb.length+d.length; });
+  var cs=0; central.forEach(function(x){ cs+=x.length }); var end=new DataView(new ArrayBuffer(22)); end.setUint32(0,0x06054b50,true); end.setUint16(8,files.length,true); end.setUint16(10,files.length,true); end.setUint32(12,cs,true); end.setUint32(16,off,true);
+  parts=parts.concat(central,[new Uint8Array(end.buffer)]); parts.forEach(function(x){ total+=x.length }); var out=new Uint8Array(total), pos=0; parts.forEach(function(x){ out.set(x,pos); pos+=x.length }); return out; }
+function docxFromMarkdown(md){
+  function esc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function run(t,sz,bold,mono){ return '<w:r><w:rPr>'+(mono?'<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/>':'')+(bold?'<w:b/>':'')+(sz?'<w:sz w:val="'+sz+'"/>':'')+'</w:rPr><w:t xml:space="preserve">'+esc(t)+'</w:t></w:r>'; }
+  function para(t,o){ o=o||{}; var ppr='<w:pPr>'+(o.before?'<w:spacing w:before="'+o.before+'" w:after="120"/>':'<w:spacing w:after="120"/>')+(o.indent?'<w:ind w:left="360" w:hanging="240"/>':'')+'</w:pPr>'; return '<w:p>'+ppr+run(t.replace(/\*\*/g,''),o.sz,o.bold,o.mono)+'</w:p>'; }
+  var body=[], lines=String(md).split('\n'), code=false;
+  lines.forEach(function(line){
+    if(/^```/.test(line)){ code=!code; return; }
+    if(code){ body.push(para(line,{mono:true,sz:18})); return; }
+    if(/^### /.test(line)) body.push(para(line.slice(4),{bold:true,sz:24,before:200}));
+    else if(/^## /.test(line)) body.push(para(line.slice(3),{bold:true,sz:30,before:280}));
+    else if(/^# /.test(line)) body.push(para(line.slice(2),{bold:true,sz:40}));
+    else if(/^\s*[-*] /.test(line)) body.push(para('•  '+line.replace(/^\s*[-*] /,''),{indent:true}));
+    else if(/^\s*$/.test(line)) body.push('<w:p/>');
+    else body.push(para(line));
+  });
+  var doc='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'+body.join('')+'<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>';
+  var enc=new TextEncoder();
+  return zipStore([
+    {name:'[Content_Types].xml',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')},
+    {name:'_rels/.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')},
+    {name:'word/document.xml',data:enc.encode(doc)}
+  ]);
+}
+function fileSaver(){ return {save:function(o){ return new Promise(function(ok){ var a=document.createElement('a'),u=URL.createObjectURL(new Blob([o.data],{type:o.type||'text/markdown'})); a.href=u; a.download=o.filename; document.body.append(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u) },2000); ok({status:'saved'}); }) }} }
+function standIn(n){ return n==='sample'?ownBrain():n==='dictation'?browserEars():n==='downloads'?fileSaver():null }
+var saveNote='';
+function chips(note){
+  if(note!=null) saveNote=note;
+  var box=$('#status-chips'); box.textContent='';
+  function chip(k,v){ box.append(h('span',{class:'chip'},k+' ',h('b',{text:v}))) }
+  chip('Brain',!ready.sample?'connecting…':INSIDE?(cap.sample?'Claude, online':'not available'):brainName());
+  chip('Ears',!ready.dictation?'connecting…':cap.dictation?(INSIDE?'voice on':'browser speech'):'typing only');
+  chip('Voice',!ready.tts?'connecting…':cap.tts?'Claude voice':(window.speechSynthesis?'browser voice':'text only'));
+  chip('Saved to',!loaded?'connecting…':dbCol?'your private space':'this browser');
+  if(saveNote) chip('Status',saveNote);
+  var b=$('#banner');
+  if(ready.sample&&!cap.sample){ b.hidden=false; b.textContent=INSIDE?'The model is not reachable in this view, so the experts cannot answer. Open this page in Claude in a desktop browser and allow it to ask Claude.':'This copy needs a brain before the experts can answer. Open Settings and choose a local model or an API key.'; }
+  else b.hidden=true;
+}
+function boot(){
+  ['sample','dictation','tts','downloads'].forEach(function(n){ use(n).then(function(ns){ cap[n]=ns||(INSIDE?null:standIn(n)); ready[n]=true; if(n==='dictation') wireDictation(); chips(); renderScribe(); }) });
+  Promise.all([use('db'),use('user')]).then(async function(r){
+    try{ uid=r[1]?await r[1].id():null }catch(e){ uid=null }
+    if(r[0]&&uid){ try{
+      var col=r[0].collection('data/users/'+uid), snap=await col.get();
+      snap.docs.forEach(function(d){ var v=d.data(); if(!v) return; if(d.id==='experts') custom=arr(v.list); else if(v.id&&Array.isArray(v.turns)) sessions.push(v) });
+      dbCol=col;
+    }catch(e){ dbCol=null } }
+    if(!dbCol){ sessions=lsGet('fps.sessions',[]); custom=lsGet('fps.experts',[]); }
+    sessions.sort(function(a,b){return b.updated-a.updated});
+    loaded=true; chips(); renderExperts(); renderSessions();
+  });
+}
+
+/* ---------- talk ---------- */
+function errText(e){
+  var c=e&&e.code;
+  if(c==='not_granted') return 'This page was not allowed to ask Claude. Allow it in the page permissions, then try again.';
+  if(c==='rate_limited') return 'Too many requests just now. Wait a moment and try again.';
+  if(c==='cancelled') return 'Stopped.';
+  if(c==='invalid_json') return 'The answer came back in the wrong shape. Try again.';
+  if(c==='refused') return 'Claude declined that request.';
+  if(c==='setup') return e.message;
+  return 'That did not work'+(e&&e.message?': '+e.message:'.')+' Try again.';
+}
+function contextNotes(){
+  if(S.mode==='build'){ var n=S.notes; if(!n.facts.length&&!n.assumptions.length&&!n.questions.length) return '';
+    return 'The Scribe\'s notes so far.\nFacts: '+n.facts.join(' | ')+'\nAssumptions: '+n.assumptions.join(' | ')+'\nOpen questions: '+n.questions.join(' | '); }
+  if(!S.graph.nodes.length) return '';
+  return 'Ideas already covered: '+S.graph.nodes.map(function(x){return x.label+' ('+x.principle+')'}).join(' | ');
+}
+function messages(ex){
+  var style=ex.style||'Socratic';
+  var room=S.mode==='build'
+   ? 'The person is examining a product idea. Help them break it down to what is certainly true. Separate facts from assumptions and say which is which. Do the arithmetic when numbers help. Ask ONE sharp question at the end to move the idea forward. Stay inside your field; when a question belongs to another specialist, name which one.'
+   : 'The person wants to understand a subject from the ground up. Start from what cannot be reduced further and build one step at a time, each step resting on the last. End with ONE question that checks understanding or opens the next layer.';
+  var sys='You are '+ex.name+', a leading expert in '+ex.field+', in a spoken first-principles session.\nYour lens: '+ex.lens+'\nYou start from: '+ex.axioms+'\nManner: '+style+'. Pitch your answer for this level: '+S.depth+'.\n'+room+
+   '\nYour reply is read aloud, so write plain spoken sentences: no markdown, no lists, no headings, at most 130 words. Say plainly when you are unsure or when a claim needs checking against a current source. Never invent figures, names or links.\n'+contextNotes();
+  var m=[{role:'user',content:sys}];
+  S.turns.slice(0,-1).slice(-16).forEach(function(t){
+    if(t.who==='you') m.push({role:'user',content:t.text});
+    else m.push({role:'assistant',content:(t.ex!==ex.id?'['+t.name+' said] ':'')+t.text});
+  });
+  return m;
+}
+function setState(t){ $('#state').textContent=t||'' }
+function setBusy(b){ busy=b; $('#btn-send').disabled=b; $('#btn-stop').hidden=!b; }
+async function send(text){
+  text=String(text||'').trim(); if(!text||busy) return;
+  if(!cap.sample){ setState(!ready.sample?'Still connecting. Try again in a moment.':INSIDE?'The model is not available in this view.':'Choose a brain in Settings first.'); return; }
+  stopSpeech();
+  var ex=expert(S.expertId), turn={who:'expert',ex:ex.id,name:ex.name,text:''};
+  S.turns.push({who:'you',text:text}); if(!S.title) S.title=text.slice(0,70);
+  S.turns.push(turn); $('#input').value=''; dictBase=''; renderTurns(); setBusy(true); setState(ex.name+' is thinking…');
+  ctrl=new AbortController();
+  try{
+    var res=await cap.sample(messages(ex),{cache:false,signal:ctrl.signal,onText:function(u){ turn.text=u.text; var p=$('#live'); if(p){ p.textContent=u.text; var b=$('#turns'); b.scrollTop=b.scrollHeight; } }});
+    turn.text=String(res.text||turn.text).trim()+(res.truncated?' …':'');
+  }catch(e){
+    if(!turn.text){ S.turns.pop(); S.turns.pop(); $('#input').value=text; } else turn.text=turn.text.trim();
+    setBusy(false); renderTurns(); setState(errText(e)); if(turn.text){ touch(); runScribe(); } return;
+  }
+  setBusy(false); setState(''); renderTurns(); touch(); speak(turn.text,ex.voice); runScribe();
+}
+function starters(){
+  return S.mode==='build'
+   ? ['A solar-powered cold box for street vegetable vendors','An offline voice assistant for first-principles research','A subscription that repairs clothes instead of replacing them']
+   : ['Why does the monsoon happen?','How does a neural network learn?','Why did the Roman Empire fall?'];
+}
+function renderTurns(){
+  var box=$('#turns'); box.textContent='';
+  if(!S.turns.length){
+    box.append(h('div',{class:'empty'},
+      h('p',{text:S.mode==='build'?'Describe a product idea. The expert pulls it apart with you, and the Scribe writes up the result on the right.':'Ask about any subject. The expert builds it from the ground up, and the Scribe draws the knowledge graph on the right.'}),
+      h('span',{class:'mono',text:'Or start from an example'}),
+      h('div',{class:'starters'},starters().map(function(s){ return h('button',{text:s,onclick:function(){ $('#input').value=s; $('#input').focus(); }}) }))));
+    return;
+  }
+  S.turns.forEach(function(t,i){
+    var last=i===S.turns.length-1, you=t.who==='you';
+    box.append(h('div',{class:'turn '+(you?'you':'ex')},
+      h('div',{class:'head'},h('span',{class:'mono',text:you?'You':t.name||'Expert'}),
+        !you&&t.text&&!(last&&busy)?h('button',{class:'quiet',text:'Hear it',onclick:function(){ speak(t.text,expert(t.ex).voice,true) }}):null),
+      h('p',{id:last&&!you?'live':null,text:t.text||'…'})));
+  });
+  box.scrollTop=box.scrollHeight;
+}
+
+/* ---------- voice out ---------- */
+function stopSpeech(){ try{ if(cap.tts&&cap.tts.active()) cap.tts.stop().catch(function(){}) }catch(e){} try{ if(window.speechSynthesis) window.speechSynthesis.cancel() }catch(e){} }
+function speak(text,voice,force){
+  if(!text||(!force&&!$('#opt-speak').checked)) return;
+  var parts=String(text).match(/[^.!?\n]+[.!?]*\s*/g)||[text], lines=[], cur='';
+  parts.forEach(function(p){ if((cur+p).length>500&&cur){ lines.push(cur); cur=p } else cur+=p }); if(cur.trim()) lines.push(cur);
+  if(cap.tts){ cap.tts.speak(lines.map(function(t){return {text:t.trim().slice(0,1900),voice:voice||'buttery'}})).catch(function(e){ if(e&&e.code==='not_granted'){ $('#opt-speak').checked=false } }); return; }
+  try{ if(window.speechSynthesis){ window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(text)); } }catch(e){}
+}
+
+/* ---------- voice in ---------- */
+function wireDictation(){
+  var d=cap.dictation, mic=$('#btn-mic'); if(!d){ mic.hidden=true; return; }
+  mic.hidden=false;
+  d.onPartial(function(e){ $('#input').value=(dictBase+' '+(e.text||'')).trim() });
+  d.onFinal(function(e){ dictBase=(dictBase+' '+(e.text||'')).trim(); $('#input').value=dictBase });
+  d.onState(function(e){
+    listening=e.state==='listening'||e.state==='starting';
+    mic.setAttribute('aria-pressed',listening?'true':'false'); mic.textContent=listening?'Stop and send':'Speak';
+    if(listening) setState('Listening… press Stop and send when you are done.');
+    else if(e.reason==='not_granted'){ mic.hidden=true; setState('Microphone access was declined, so typing is the way in.'); }
+    else if(!busy) setState('');
+  });
+  mic.addEventListener('click',function(){
+    if(listening){ d.stop().then(function(){ var t=$('#input').value; if(t.trim()) send(t) },function(){}); return; }
+    dictBase=$('#input').value.trim();
+    d.start().catch(function(e){ if(e&&e.code==='not_granted'){ mic.hidden=true; setState('Microphone access was declined, so typing is the way in.') } else setState('The microphone did not start. Try again.') });
+    stopSpeech();
+  });
+}
+
+/* ---------- scribe ---------- */
+function lastExchange(){ return S.turns.slice(-4).map(function(t){ return (t.who==='you'?'Person':t.name||'Expert')+': '+String(t.text).slice(0,1600) }).join('\n') }
+function transcript(n){ return S.turns.slice(-n).map(function(t){ return (t.who==='you'?'Person':t.name||'Expert')+': '+String(t.text).slice(0,1400) }).join('\n') }
+function scribePrompt(){
+  if(S.mode==='build') return 'You are the Scribe in a first-principles product session. You never speak. You keep structured notes.\n\nCurrent notes as JSON:\n'+JSON.stringify(S.notes)+'\n\nLatest part of the conversation:\n'+lastExchange()+
+   '\n\nUpdate the notes. Keep everything still valid, merge duplicates, and move an assumption to facts only if the conversation established it. Each item is one plain sentence of at most 16 words, and each list has at most 10 items. "diagram" shows how the idea works as blocks: at most 9 nodes with short lowercase ids, edges as [from,to] in the direction things flow, and "assumption": true on a block whose working is not yet proven. "ideas" holds the names of the distinct product ideas or variants raised, at most 5. "title" is a 3 to 6 word name for the idea.\nReply with only a JSON object of exactly this shape:\n{"title":"","facts":[""],"assumptions":[""],"questions":[""],"diagram":{"nodes":[{"id":"a","label":"","assumption":false}],"edges":[["a","b"]]},"ideas":[""]}';
+  return 'You are the Scribe in a first-principles learning session. You never speak. You keep a knowledge graph.\n\nCurrent graph as JSON:\n'+JSON.stringify(S.graph)+'\n\nLatest part of the conversation:\n'+lastExchange()+
+   '\n\nUpdate the graph. Each node is one idea. An edge [from,to] means the idea "to" rests on the idea "from", so the most basic facts have no incoming edges. At most 14 nodes. "label" has at most 4 words. "principle" is one or two plain sentences. "search" is the best Wikipedia search term for that idea, as words only and never a URL. "title" is a 2 to 6 word name for the topic.\nReply with only a JSON object of exactly this shape:\n{"title":"","nodes":[{"id":"n1","label":"","principle":"","search":""}],"edges":[["n1","n2"]]}';
+}
+function cleanGraph(nodes,edges,n){
+  var seen={},ns=arr(nodes).filter(function(x){ return x&&typeof x.id==='string'&&x.label&&!seen[x.id]&&(seen[x.id]=1) }).slice(0,n);
+  var ids={}; ns.forEach(function(x){ids[x.id]=1});
+  return {nodes:ns,edges:arr(edges).filter(function(e){ return Array.isArray(e)&&ids[e[0]]&&ids[e[1]]&&e[0]!==e[1] }).map(function(e){return [e[0],e[1]]})};
+}
+function applyScribe(o){
+  if(!o||typeof o!=='object') return;
+  if(typeof o.title==='string'&&o.title.trim()) S.title=o.title.trim().slice(0,70);
+  if(S.mode==='build'){
+    var d=cleanGraph(o.diagram&&o.diagram.nodes,o.diagram&&o.diagram.edges,9);
+    d.nodes=d.nodes.map(function(x){return {id:x.id,label:String(x.label).slice(0,40),assumption:!!x.assumption}});
+    S.notes={facts:strs(o.facts,10),assumptions:strs(o.assumptions,10),questions:strs(o.questions,10),diagram:d,ideas:strs(o.ideas,5)};
+  } else {
+    var g=cleanGraph(o.nodes,o.edges,14);
+    g.nodes=g.nodes.map(function(x){return {id:x.id,label:String(x.label).slice(0,40),principle:String(x.principle||''),search:(String(x.search||'').replace(/https?:\S+/g,'').trim()||String(x.label)).slice(0,80)}});
+    S.graph=g; if(!pickNode&&g.nodes[0]) pickNode=g.nodes[0].id;
+  }
+}
+async function runScribe(){
+  if(!cap.sample) return; if(scribeBusy){ scribeDirty=true; return; }
+  scribeBusy=true; $('#scribe-state').textContent='Writing…';
+  try{ applyScribe(await cap.sample.json(scribePrompt(),{cache:false})); touch(); $('#scribe-state').textContent=''; }
+  catch(e){ $('#scribe-state').textContent='Missed a turn'; }
+  scribeBusy=false; renderScribe();
+  if(scribeDirty){ scribeDirty=false; runScribe(); }
+}
+
+/* ---------- analysis ---------- */
+var HEAD='You are a senior analyst writing one section of a first-principles product review. Use the notes and conversation below plus your general knowledge. You have no live web access: name a real competitor or product only if you are confident it exists, and list under "to_verify" every name and number that must be checked against a current source. Never present an invented figure as fact; when you estimate, say so and give the basis. Use short plain sentences.\n\n';
+function ctx(){ return 'Idea: '+(S.title||'untitled')+'\nNotes: '+JSON.stringify(S.notes)+'\nConversation:\n'+transcript(30)+'\n\n' }
+var FITS={
+ market:{name:'Market fit',q:'Is there room?',shape:'Write the MARKET FIT section. Reply with only a JSON object of exactly this shape:\n{"viable":"yes | unclear | no","why":"","direct_competitors":[{"name":"","what_they_offer":"","confidence":"high | medium | low"}],"indirect_competitors":[{"alternative":"","why_people_use_it":""}],"market_today":"","blue_ocean":{"eliminate":[""],"reduce":[""],"raise":[""],"create":[""]},"cost_to_enter":"","to_verify":[""]}'},
+ product:{name:'Product fit',q:'Can it be built sensibly?',shape:'Write the PRODUCT FIT section. Reply with only a JSON object of exactly this shape:\n{"fit":"good | unclear | poor","why":"","solves_the_problem":"","resources_needed":{"people":"","money":"","time":"","compute":""},"complexity":[{"part":"","why_it_is_hard":"","level":"low | medium | high"}],"known_unknowns":[""],"steps_to_launch_ideation":[""]}'},
+ customer:{name:'Customer fit',q:'Are these the right people?',shape:'Write the CUSTOMER FIT section. Reply with only a JSON object of exactly this shape:\n{"fit":"good | unclear | poor","why":"","personas":[{"name":"","who_they_are":"","what_they_need":"","main_pain":""}],"segments":[{"segment":"","why_first_or_later":""}],"market_size":{"tam":{"estimate":"","basis":""},"sam":{"estimate":"","basis":""},"som":{"estimate":"","basis":""}},"channels":[{"where_they_are":"","how_to_reach_them":""}],"to_verify":[""]}'}
+};
+async function ask(key,prompt,apply,asText){
+  if(work[key]||!cap.sample) return; work[key]=true; errs[key]=''; renderScribe();
+  try{ var out=asText?(await cap.sample(prompt,{cache:false})).text:await cap.sample.json(prompt,{cache:false,modelTier:'complex'}); apply(out); touch(); }
+  catch(e){ errs[key]=errText(e); }
+  work[key]=false; renderScribe();
+}
+function runFit(k){ return ask('fit-'+k,HEAD+ctx()+FITS[k].shape,function(o){ if(o&&typeof o==='object') S.fits[k]=o }) }
+function runScore(){
+  var names=S.score.map(function(r){return r.name}).filter(Boolean); if(!names.length) names=S.notes.ideas.length?S.notes.ideas.slice():[S.title||'The idea'];
+  return ask('score',HEAD+ctx()+'Score each of these ideas with RICE: '+JSON.stringify(names)+'\nreach = people reached per quarter (a number), impact = one of 0.25, 0.5, 1, 2, 3, confidence = one of 50, 80, 100 (percent), effort = person-months (a number), why = one sentence on the basis. These are first estimates for the person to edit.\nReply with only a JSON array of exactly this shape:\n[{"name":"","reach":0,"impact":1,"confidence":50,"effort":1,"why":""}]',
+   function(o){ if(o&&!Array.isArray(o)) o=Object.keys(o).map(function(k){return o[k]}).filter(Array.isArray)[0]; var rows=arr(o).filter(function(r){return r&&r.name}).slice(0,6).map(function(r){ return {name:String(r.name).slice(0,80),reach:+r.reach||0,impact:+r.impact||1,confidence:+r.confidence||50,effort:+r.effort||1,why:String(r.why||'')} }); if(rows.length) S.score=rows; });
+}
+function rice(r){ return r.effort>0?r.reach*r.impact*(r.confidence/100)/r.effort:0 }
+function runVerdict(){
+  var f={}; Object.keys(S.fits).forEach(function(k){ var o=S.fits[k]; f[k]={result:o.viable||o.fit,why:o.why} });
+  return ask('verdict',HEAD+ctx()+'Fit results so far: '+JSON.stringify(f)+'\nRICE scores: '+JSON.stringify(S.score.map(function(r){return {name:r.name,score:Math.round(rice(r)*10)/10}}))+
+   '\nGive a verdict on whether this idea is worth pursuing. The person makes the final call.\nReply with only a JSON object of exactly this shape:\n{"recommendation":"pursue | park | drop","reasons":[""],"weakest_assumption":"","smallest_next_test":"","what_would_change_this":""}',
+   function(o){ if(o&&typeof o==='object') S.verdict=o });
+}
+function runDemo(){
+  return ask('demo','Design one static mock-up of the main screen of this product, to show the person what it could look like.\n'+ctx()+'Write a complete small HTML document using only HTML and inline CSS in a <style> tag: no scripts, no external files, no images, no links that go anywhere. Use realistic sample content and mark it as a mock-up in a small caption. At most 120 lines. Reply with only the HTML.',
+   function(t){ S.demo=String(t||'').replace(/^```[a-z]*\s*/i,'').replace(/```\s*$/,'').replace(/<script[\s\S]*?<\/script>/gi,'') },true);
+}
+
+/* ---------- drawing ---------- */
+var NS='http://www.w3.org/2000/svg', gseq=0;
+function sv(n,a){ var e=document.createElementNS(NS,n); for(var k in a) e.setAttribute(k,a[k]); return e }
+function wrap2(s){ var w=String(s).split(/\s+/),a='',b=''; w.forEach(function(x){ if(!b&&(a+' '+x).trim().length<=19) a=(a+' '+x).trim(); else b=(b+' '+x).trim() }); if(b.length>20) b=b.slice(0,19)+'…'; return b?[a,b]:[a] }
+function drawGraph(nodes,edges,opts){
+  opts=opts||{}; var svg=sv('svg',{role:'img','aria-label':opts.label||'Diagram'});
+  if(!nodes.length) return svg;
+  var lvl={},i,ch; nodes.forEach(function(n){lvl[n.id]=0});
+  for(i=0;i<nodes.length;i++){ ch=false; edges.forEach(function(e){ if(lvl[e[1]]<lvl[e[0]]+1&&lvl[e[0]]+1<nodes.length){ lvl[e[1]]=lvl[e[0]]+1; ch=true } }); if(!ch) break; }
+  var byL={},rows=[]; nodes.forEach(function(n){ (byL[lvl[n.id]]=byL[lvl[n.id]]||[]).push(n) });
+  Object.keys(byL).map(Number).sort(function(a,b){return a-b}).forEach(function(l){ for(var j=0;j<byL[l].length;j+=3) rows.push(byL[l].slice(j,j+3)) });
+  var NW=148,NH=42,GX=16,GY=38,per=Math.max.apply(null,rows.map(function(r){return r.length})),W=Math.max(340,per*(NW+GX)+GX+96),H=rows.length*(NH+GY)-GY+16,pos={};
+  rows.forEach(function(r,ri){ var total=r.length*NW+(r.length-1)*GX,x0=(W-total)/2; r.forEach(function(n,ci){ pos[n.id]={x:x0+ci*(NW+GX)+NW/2,y:8+ri*(NH+GY)+NH/2} }) });
+  svg.setAttribute('viewBox','0 0 '+W+' '+H); svg.setAttribute('width',W); svg.style.maxWidth='100%';
+  var mid='arr'+(++gseq),defs=sv('defs',{}),mk=sv('marker',{id:mid,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto-start-reverse'});
+  mk.append(sv('path',{'class':'garrow',d:'M0 0L10 5L0 10z'})); defs.append(mk); svg.append(defs);
+  edges.forEach(function(e){ var a=pos[e[0]],b=pos[e[1]]; if(!a||!b) return; var down=b.y>a.y+1,same=Math.abs(b.y-a.y)<1;
+    if(!down&&!same){ var x1=a.x+NW/2,x2=b.x+NW/2+2,cx=Math.max(x1,x2)+44; svg.append(sv('path',{'class':'gedge','stroke-dasharray':'4 3',d:'M'+x1+' '+a.y+' C'+cx+' '+a.y+' '+cx+' '+b.y+' '+x2+' '+b.y,'marker-end':'url(#'+mid+')'})); return; }
+    svg.append(sv('line',{'class':'gedge',x1:same?a.x+(b.x>a.x?NW/2:-NW/2):a.x,y1:same?a.y:a.y+(down?NH/2:-NH/2),x2:same?b.x+(b.x>a.x?-NW/2-2:NW/2+2):b.x,y2:same?b.y:b.y+(down?-NH/2-2:NH/2+2),'marker-end':'url(#'+mid+')'})) });
+  nodes.forEach(function(n){ var p=pos[n.id],g=sv('g',{'class':'gnode'+(n.assumption?' assume':'')+(opts.onPick?' pick':'')+(opts.sel===n.id?' on':'')});
+    g.append(sv('rect',{x:p.x-NW/2,y:p.y-NH/2,width:NW,height:NH}));
+    var ls=wrap2(n.label),t=sv('text',{x:p.x,y:p.y}); ls.forEach(function(l,k){ var ts=sv('tspan',{x:p.x,dy:k===0?(ls.length>1?'-0.25em':'0.35em'):'1.2em'}); ts.textContent=l; t.append(ts) }); g.append(t);
+    if(opts.onPick){ g.setAttribute('role','button'); g.setAttribute('tabindex','0'); g.addEventListener('click',function(){opts.onPick(n.id)}); g.addEventListener('keydown',function(ev){ if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); opts.onPick(n.id) } }); }
+    svg.append(g); });
+  return svg;
+}
+
+/* ---------- generic rendering of analysis ---------- */
+function rv(v){
+  if(v==null||v==='') return h('p',{class:'muted',text:'Not covered.'});
+  if(typeof v!=='object') return h('p',{text:String(v)});
+  if(Array.isArray(v)){ if(!v.length) return h('p',{class:'muted',text:'Nothing listed.'});
+    if(v.every(function(x){return x==null||typeof x!=='object'})) return h('ul',{class:'list'},v.map(function(x){return h('li',{text:String(x)})}));
+    return h('div',{class:'cards'},v.map(function(x){ return h('div',{class:'card'},ro(x)) })); }
+  return h('div',{class:'kv'},ro(v));
+}
+function ro(o){ if(!o||typeof o!=='object') return [h('p',{text:String(o)})];
+  return Object.keys(o).map(function(k){ var v=o[k]; if(v&&typeof v==='object') return h('div',{class:'kvrow'},h('span',{class:'mono',text:human(k)}),rv(v)); return h('p',{},h('span',{class:'mono',text:human(k)+'  '}),String(v==null?'':v)) }) }
+function badge(v){ v=String(v||'').toLowerCase(); var c=/^(yes|good|pursue)/.test(v)?'good':/^(no|poor|drop)/.test(v)?'bad':'mid'; return h('span',{class:'badge '+c,text:v||'unclear'}) }
+function section(o,skip){ return Object.keys(o).filter(function(k){return skip.indexOf(k)<0}).map(function(k){ return h('div',{class:'stack'},h('h3',{text:human(k)}),rv(o[k])) }) }
+function mv(v,ind){ ind=ind||'';
+  if(v==null||v==='') return ind+'Not covered.\n'; if(typeof v!=='object') return ind+String(v)+'\n';
+  if(Array.isArray(v)) return v.map(function(x){ return (x&&typeof x==='object')?ind+'- '+Object.keys(x).map(function(k){return human(k)+': '+(typeof x[k]==='object'?JSON.stringify(x[k]):x[k])}).join('; ')+'\n':ind+'- '+x+'\n' }).join('');
+  return Object.keys(v).map(function(k){ var x=v[k]; return (x&&typeof x==='object')?ind+'- '+human(k)+':\n'+mv(x,ind+'  '):ind+'- '+human(k)+': '+x+'\n' }).join('');
+}
+
+/* ---------- report ---------- */
+function report(){
+  var L=[],n=S.notes,d=new Date(S.created).toISOString().slice(0,10);
+  function sec(t){ L.push('','## '+t,'') }
+  function bl(a){ if(!a.length) L.push('Nothing recorded yet.'); a.forEach(function(x){L.push('- '+x)}) }
+  L.push('# '+(S.title||'Untitled session')+(S.mode==='build'?': first principles review':': first principles notes'),'','Date: '+d+'  ','Room: '+(S.mode==='build'?'Build':'Learn')+'  ','Experts: '+S.turns.filter(function(t){return t.who==='expert'}).map(function(t){return t.name}).filter(function(x,i,a){return a.indexOf(x)===i}).join(', '));
+  if(S.mode==='build'){
+    sec('Facts'); bl(n.facts); sec('Assumptions to test'); bl(n.assumptions); sec('Open questions'); bl(n.questions);
+    sec('Block diagram'); if(!n.diagram.nodes.length) L.push('Not drawn yet.'); else { L.push('```mermaid','flowchart LR'); n.diagram.nodes.forEach(function(x){ L.push('  '+x.id+'["'+x.label.replace(/"/g,"'")+(x.assumption?' (assumption)':'')+'"]') }); n.diagram.edges.forEach(function(e){ L.push('  '+e[0]+' --> '+e[1]) }); L.push('```'); }
+    ['market','product','customer'].forEach(function(k){ sec(FITS[k].name); L.push(S.fits[k]?mv(S.fits[k]).trimEnd():'Not run yet.') });
+    sec('Priority score (RICE)'); if(!S.score.length) L.push('Not scored yet.'); else { L.push('| Idea | Reach | Impact | Confidence | Effort | Score |','|---|---|---|---|---|---|'); S.score.slice().sort(function(a,b){return rice(b)-rice(a)}).forEach(function(r){ L.push('| '+r.name+' | '+r.reach+' | '+r.impact+' | '+r.confidence+'% | '+r.effort+' | '+(Math.round(rice(r)*10)/10)+' |') }); }
+    sec('Verdict'); L.push(S.verdict?mv(S.verdict).trimEnd():'No verdict requested yet.'); L.push('','Your decision: '+(S.decision||'not made yet'));
+    sec('Sources'); L.push('The analysis sections come from the model\'s general knowledge, not a live web search. Check every item under "To verify" against a current source before relying on it.');
+  } else {
+    sec('Ideas, from the ground up');
+    if(!S.graph.nodes.length) L.push('Nothing recorded yet.');
+    S.graph.nodes.forEach(function(x){ var r=S.graph.edges.filter(function(e){return e[1]===x.id}).map(function(e){ var s=S.graph.nodes.filter(function(y){return y.id===e[0]})[0]; return s?s.label:'' }).filter(Boolean);
+      L.push('### '+x.label,'',x.principle,'','Rests on: '+(r.length?r.join(', '):'nothing else; this is a starting fact'),'','Read: '+wiki(x.search)+'  ','Watch: '+yt(x.search),''); });
+  }
+  sec('Full transcript'); S.turns.forEach(function(t){ L.push('**'+(t.who==='you'?'You':t.name)+':** '+t.text,'') });
+  return L.join('\n')+'\n';
+}
+function wiki(q){ return 'https://en.wikipedia.org/wiki/Special:Search?search='+encodeURIComponent(q) }
+function yt(q){ return 'https://www.youtube.com/results?search_query='+encodeURIComponent(q) }
+function slug(){ return (S.title||'session').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,50)||'session' }
+
+/* ---------- scribe panes ---------- */
+function runBtn(key,label,fn,primary){ return h('button',{class:primary?'primary':null,disabled:work[key]||!cap.sample||!S.turns.length,text:work[key]?'Working…':label,onclick:fn}) }
+function errLine(key){ return errs[key]?h('p',{class:'err',text:errs[key]}):null }
+var PANES={
+ Principles:function(){ var n=S.notes;
+   function col(t,sub,a){ return h('div',{class:'col'},h('h3',{text:t+(a.length?' ('+a.length+')':'')}),h('span',{class:'mono',text:sub}),a.length?h('ul',{class:'list'},a.map(function(x){return h('li',{text:x})})):h('p',{class:'muted',text:'Fills in as you talk.'})) }
+   return [h('p',{class:'muted',text:'Every statement from the conversation lands in one of three piles.'}),h('div',{class:'cols'},col('Facts','Checkable today',n.facts),col('Assumptions','Must be tested',n.assumptions),col('Open questions','Nobody knows yet',n.questions))]; },
+ Diagram:function(){ var d=S.notes.diagram;
+   return [d.nodes.length?h('div',{class:'graphbox'},drawGraph(d.nodes,d.edges,{label:'Block diagram of the idea'})):h('p',{class:'muted',text:'The block diagram appears once the idea has a few moving parts.'}),
+     d.nodes.length?h('p',{class:'muted',text:'A dashed block rests on an assumption that is not yet proven.'}):null,
+     h('div',{class:'fit'},h('div',{class:'row'},h('h3',{class:'grow',text:'Demo screen'}),runBtn('demo',S.demo?'Redraw':'Draft a demo screen',runDemo)),errLine('demo'),
+       S.demo?h('iframe',{class:'demo',sandbox:'',title:'Mock-up of the product',srcdoc:S.demo}):h('p',{class:'muted',text:'A static mock-up of what the product could look like, drawn from the conversation.'}))]; },
+ Fits:function(){
+   var out=[h('p',{class:'warnline',text:'These come from the model\'s general knowledge, not a live web search. Check names and numbers under "To verify" before relying on them.'}),
+     h('div',{class:'row'},runBtn('fits-all','Run all three',function(){ ['market','product','customer'].forEach(runFit) },true))];
+   ['market','product','customer'].forEach(function(k){ var F=FITS[k],o=S.fits[k],key='fit-'+k;
+     out.push(h('div',{class:'fit'},h('div',{class:'row'},h('div',{class:'grow stack'},h('h3',{text:F.name}),h('span',{class:'mono',text:F.q})),o?badge(o.viable||o.fit):null,runBtn(key,o?'Run again':'Run',function(){runFit(k)})),
+       errLine(key),o?h('p',{text:o.why||''}):null,o?section(o,['viable','fit','why']):null)); });
+   return out; },
+ Score:function(){
+   var rows=S.score,max=Math.max.apply(null,rows.map(rice).concat([1])),order=rows.map(function(_,i){return i}).sort(function(a,b){return rice(rows[b])-rice(rows[a])});
+   function field(r,i,k,lab,step){ return h('label',{},h('span',{class:'mono',text:lab}),h('input',{id:'sc-'+k+'-'+i,type:'number',min:'0',step:step,value:r[k],oninput:function(ev){ r[k]=parseFloat(ev.target.value)||0; refreshScores(); touch(); }})) }
+   var out=[h('p',{class:'muted',text:'Score = Reach × Impact × Confidence ÷ Effort. Reach is people per quarter, impact runs 0.25 to 3, confidence is a percentage, effort is person-months.'}),
+     h('div',{class:'row'},runBtn('score',rows.length?'Re-estimate':'Estimate with RICE',runScore,true),h('button',{text:'Add an idea',onclick:function(){ S.score.push({name:'New idea',reach:100,impact:1,confidence:50,effort:1,why:''}); renderScribe(); }})),errLine('score')];
+   if(!rows.length) out.push(h('p',{class:'muted',text:S.notes.ideas.length?'Ideas heard so far: '+S.notes.ideas.join(', ')+'.':'Ideas raised in the conversation are listed here to score.'}));
+   rows.forEach(function(r,i){ out.push(h('div',{class:'srow'},
+     h('label',{class:'name'},h('span',{class:'mono',text:'Idea'}),h('input',{id:'sc-name-'+i,value:r.name,oninput:function(ev){ r.name=ev.target.value; touch(); }})),
+     field(r,i,'reach','Reach','10'),field(r,i,'impact','Impact','0.25'),field(r,i,'confidence','Conf. %','10'),field(r,i,'effort','Effort','0.5'),
+     h('div',{class:'out'},h('b',{id:'sc-out-'+i,text:String(Math.round(rice(r)*10)/10)}),h('div',{class:'barline'},h('i',{id:'sc-bar-'+i,style:'width:'+(100*rice(r)/max)+'%'})),h('span',{class:'mono',id:'sc-rank-'+i,text:'Rank '+(order.indexOf(i)+1)})),
+     h('button',{class:'quiet',text:'Remove',onclick:function(){ S.score.splice(i,1); touch(); renderScribe(); }}),
+     r.why?h('p',{class:'why',text:'Scribe\'s basis: '+r.why}):null)); });
+   return out; },
+ Verdict:function(){ var v=S.verdict;
+   return [h('div',{class:'row'},runBtn('verdict',v?'Ask again':'Ask the Scribe for a verdict',runVerdict,true),v?badge(v.recommendation):null),errLine('verdict'),
+     v?section(v,['recommendation']):h('p',{class:'muted',text:'The Scribe weighs the notes, the three fits and the scores, and recommends pursue, park or drop. It works best after the fits have run.'}),
+     h('div',{class:'fit'},h('h3',{text:'Your call'}),h('div',{class:'row'},['Pursue','Park','Drop'].map(function(x){ return h('button',{class:S.decision===x?'primary':null,text:x,onclick:function(){ S.decision=S.decision===x?'':x; touch(); renderScribe(); }}) })))]; },
+ Graph:function(){ var g=S.graph; if(!g.nodes.length) return [h('p',{class:'muted',text:'The knowledge graph grows as you talk. Each idea links to the ideas it rests on.'})];
+   var n=g.nodes.filter(function(x){return x.id===pickNode})[0]||g.nodes[0];
+   var rests=g.edges.filter(function(e){return e[1]===n.id}).map(function(e){ var s=g.nodes.filter(function(y){return y.id===e[0]})[0]; return s?s.label:'' }).filter(Boolean);
+   return [h('div',{class:'graphbox'},drawGraph(g.nodes,g.edges,{label:'Knowledge graph',sel:n.id,onPick:function(id){ pickNode=id; renderScribe(); }})),
+     h('div',{class:'fit'},h('span',{class:'mono',text:'First principle'}),h('h3',{text:n.label}),h('p',{text:n.principle}),
+       h('p',{},h('span',{class:'mono',text:'Rests on  '}),rests.length?rests.join(' + '):'Nothing else. This is a starting fact.'),
+       h('div',{class:'row'},h('a',{href:wiki(n.search),target:'_blank',rel:'noopener',text:'Read on Wikipedia'}),h('a',{href:yt(n.search),target:'_blank',rel:'noopener',text:'Find videos on YouTube'})),
+       h('p',{class:'muted',text:'Both links open a search for "'+n.search+'", so they always land on real pages.'}))]; },
+ Notes:function(){ var g=S.graph; if(!g.nodes.length) return [h('p',{class:'muted',text:'Each idea the expert establishes is written here in one or two sentences.'})];
+   return [h('div',{class:'cards'},g.nodes.map(function(x){ return h('div',{class:'card'},h('h3',{text:x.label}),h('p',{text:x.principle})) }))]; },
+ Report:function(){ var md=report();
+   return [h('div',{class:'row'},cap.downloads?h('button',{class:'primary',text:'Download Word (.docx)',onclick:function(){ cap.downloads.save({filename:slug()+'.docx',data:docxFromMarkdown(md),type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}).catch(function(){}) }}):null,
+     h('button',{text:'Copy',onclick:function(ev){ var b=ev.target; try{ navigator.clipboard.writeText(md).then(function(){ b.textContent='Copied' },function(){ sel() }) }catch(e){ sel() } function sel(){ var r=document.createRange(); r.selectNodeContents($('#report')); var s=getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent='Selected, now copy'; } }})),
+     h('pre',{class:'report',id:'report',text:md})]; }
+};
+function refreshScores(){ var rows=S.score,max=Math.max.apply(null,rows.map(rice).concat([1])),order=rows.map(function(_,i){return i}).sort(function(a,b){return rice(rows[b])-rice(rows[a])});
+  rows.forEach(function(r,i){ var o=$('#sc-out-'+i); if(!o) return; o.textContent=String(Math.round(rice(r)*10)/10); $('#sc-bar-'+i).style.width=(100*rice(r)/max)+'%'; $('#sc-rank-'+i).textContent='Rank '+(order.indexOf(i)+1); }) }
+function renderScribe(){
+  var names=S.mode==='build'?['Principles','Diagram','Fits','Score','Verdict','Report']:['Graph','Notes','Report'],cur=tab[S.mode];
+  var a=document.activeElement,keep=a&&a.id&&$('#pane').contains(a)?a.id:null,pos=keep?a.selectionStart:null;
+  $('#scribe-title').textContent=S.title||'The Scribe\'s notebook';
+  var tb=$('#tabs'); tb.textContent=''; names.forEach(function(n){ tb.append(h('button',{'aria-pressed':n===cur?'true':'false',text:n,onclick:function(){ tab[S.mode]=n; renderScribe(); }})) });
+  var pane=$('#pane'); pane.textContent=''; PANES[cur]().forEach(function(x){ if(Array.isArray(x)) x.forEach(function(y){ if(y) pane.append(y) }); else if(x) pane.append(x) });
+  if(keep){ var el=document.getElementById(keep); if(el){ el.focus(); try{ if(pos!=null&&el.type!=='number') el.setSelectionRange(pos,pos) }catch(e){} } }
+}
+
+/* ---------- experts, sessions, chrome ---------- */
+function renderExperts(){
+  var box=$('#tiles'); box.textContent='';
+  var list=allExperts().slice().sort(function(a,b){ return (a.room===S.mode||a.room==='own'?0:1)-(b.room===S.mode||b.room==='own'?0:1) });
+  list.forEach(function(x){ box.append(h('button',{class:'tile','aria-pressed':x.id===S.expertId?'true':'false',onclick:function(){ S.expertId=x.id; renderExperts(); }},
+    h('span',{class:'mono',text:x.room==='own'?'Yours':x.room==='build'?'Build':'Learn'}),h('span',{class:'sym',text:x.s}),h('span',{class:'who',text:x.name}))) });
+  box.append(h('button',{class:'tile new',onclick:function(){ $('#expert-form').hidden=false; $('#xf-name').focus(); }},h('span',{class:'mono',text:'Custom'}),h('span',{class:'sym',text:'+'}),h('span',{class:'who',text:'New expert'})));
+  var ex=expert(S.expertId),lens=$('#lens'); lens.textContent='';
+  lens.append(h('strong',{text:ex.name+'. '}),ex.lens+' Starts from: '+ex.axioms);
+  if(ex.room==='own') lens.append(h('button',{class:'quiet',text:'Remove this expert',onclick:function(){ custom=custom.filter(function(c){return c.id!==ex.id}); saveCustom(); S.expertId=S.mode==='learn'?'generalist':'physicist'; renderExperts(); }}));
+}
+function renderSessions(){
+  var box=$('#sess-list'); box.textContent='';
+  if(!loaded){ box.append(h('p',{class:'muted',text:'Loading saved sessions…'})); return; }
+  if(!sessions.length){ box.append(h('p',{class:'muted',text:'Nothing saved yet. A session is saved automatically after its first answer, and you can reopen it here to carry on where you stopped.'})); return; }
+  sessions.forEach(function(x){ var del=h('button',{class:'quiet',text:'Delete',onclick:function(){ if(del.textContent==='Delete'){ del.textContent='Confirm delete'; return; } removeSession(x.id); }});
+    box.append(h('div',{class:'sess'},h('strong',{class:'grow',text:x.title||'Untitled'}),h('span',{class:'mono',text:(x.mode==='build'?'Build':'Learn')+' · '+x.turns.length+' turns · '+new Date(x.updated).toLocaleDateString()}),
+      h('button',{text:x.id===S.id?'Open now':'Open',disabled:x.id===S.id,onclick:function(){ openSession(x) }}),del)); });
+}
+function openSession(x){ if(busy&&ctrl) ctrl.abort(); stopSpeech(); S=Object.assign(newSession(x.mode),JSON.parse(JSON.stringify(x))); pickNode=null; errs={}; $('#drawer').hidden=true; renderAll(); setState('Session reopened. The expert has the Scribe\'s notes and the last turns, so carry on from here.'); }
+function setMode(m){ if(S.mode===m) return; if(busy&&ctrl) ctrl.abort(); stopSpeech(); S=newSession(m); pickNode=null; errs={}; renderAll(); }
+function renderAll(){
+  document.body.setAttribute('data-mode',S.mode);
+  $('#m-build').setAttribute('aria-pressed',S.mode==='build'?'true':'false'); $('#m-learn').setAttribute('aria-pressed',S.mode==='learn'?'true':'false');
+  $('#opt-depth').value=S.depth; setState(''); renderExperts(); renderTurns(); renderScribe(); renderSessions();
+}
+function setView(v){ document.body.setAttribute('data-view',v); $('#v-talk').setAttribute('aria-pressed',v==='talk'?'true':'false'); $('#v-scribe').setAttribute('aria-pressed',v==='scribe'?'true':'false'); }
+
+$('#m-build').addEventListener('click',function(){setMode('build')}); $('#m-learn').addEventListener('click',function(){setMode('learn')});
+$('#v-talk').addEventListener('click',function(){setView('talk')}); $('#v-scribe').addEventListener('click',function(){setView('scribe')});
+$('#btn-new').addEventListener('click',function(){ if(busy&&ctrl) ctrl.abort(); stopSpeech(); S=newSession(S.mode); pickNode=null; errs={}; renderAll(); });
+$('#btn-sessions').addEventListener('click',function(){ var d=$('#drawer'); d.hidden=!d.hidden; renderSessions(); });
+$('#btn-close-drawer').addEventListener('click',function(){ $('#drawer').hidden=true });
+$('#btn-send').addEventListener('click',function(){ send($('#input').value) });
+$('#btn-stop').addEventListener('click',function(){ if(ctrl) ctrl.abort(); stopSpeech(); });
+$('#input').addEventListener('keydown',function(ev){ if(ev.key==='Enter'&&!ev.shiftKey){ ev.preventDefault(); send($('#input').value) } });
+$('#opt-depth').addEventListener('change',function(ev){ S.depth=ev.target.value });
+$('#opt-speak').checked=lsGet('fps.speak',true);
+$('#opt-speak').addEventListener('change',function(ev){ lsSet('fps.speak',ev.target.checked); if(!ev.target.checked) stopSpeech(); });
+$('#xf-cancel').addEventListener('click',function(){ $('#expert-form').hidden=true });
+$('#xf-save').addEventListener('click',function(){
+  var name=$('#xf-name').value.trim(),field=$('#xf-field').value.trim(),ax=$('#xf-axioms').value.trim();
+  if(!name||!field){ $('#xf-err').textContent='Give the expert a name and a field.'; return; }
+  var x={id:'c'+Date.now().toString(36),s:name.slice(0,2),name:name,room:'own',field:field,lens:'Your own specialist in '+field+'.',axioms:ax||'The established basics of '+field+'.',style:$('#xf-style').value,voice:$('#xf-voice').value};
+  custom.push(x); saveCustom(); S.expertId=x.id; $('#xf-err').textContent=''; ['xf-name','xf-field','xf-axioms'].forEach(function(i){ $('#'+i).value='' }); $('#expert-form').hidden=true; renderExperts();
+});
+function pickBrain(){ var v=$('#set-brain').value,api=v==='api',gem=v==='gemini'; ['row-ollama-url','row-ollama-model'].forEach(function(i){ $('#'+i).hidden=api||gem }); ['row-api-key','row-api-model'].forEach(function(i){ $('#'+i).hidden=!api }); ['row-gemini-key','row-gemini-model'].forEach(function(i){ $('#'+i).hidden=!gem });
+  $('#set-help').textContent=gem?'The Gemini key is stored in this browser only and is sent straight to Google\'s Gemini API. Anyone who can use this browser profile can read it, so use a key with a spending limit. Each answer costs a small amount.':api?'The key is stored in this browser only and is sent straight to the Claude API. Anyone who can use this browser profile can read it, so use a key with a spending limit. Each answer costs a small amount.':'Install Ollama on this PC and download a model, for example by running "ollama pull qwen3:14b". Ollama only answers pages it has been told to trust, so set its OLLAMA_ORIGINS setting to allow this page and restart it. Nothing you say to the expert leaves the PC. Voice input uses the browser\'s speech recognition, which in Chrome is an online service; typing works fully offline.'; }
+function showSettings(){ var c=cfg(); $('#set-brain').value=c.brain; $('#set-ollama-url').value=c.ollamaUrl; $('#set-ollama-model').value=c.ollamaModel; $('#set-api-key').value=c.apiKey; $('#set-api-model').value=c.apiModel; $('#set-gemini-key').value=c.geminiKey; $('#set-gemini-model').value=c.geminiModel; $('#set-msg').textContent=''; pickBrain(); }
+function saveSettings(){ lsSet('fps.settings',{brain:$('#set-brain').value,ollamaUrl:$('#set-ollama-url').value.trim(),ollamaModel:$('#set-ollama-model').value.trim(),apiKey:$('#set-api-key').value.trim(),apiModel:$('#set-api-model').value.trim(),geminiKey:$('#set-gemini-key').value.trim(),geminiModel:$('#set-gemini-model').value.trim()}); cap.sample=ownBrain(); chips(); renderScribe(); }
+if(!INSIDE){
+  $('#btn-settings').hidden=false;
+  $('#btn-settings').addEventListener('click',function(){ var d=$('#settings'); d.hidden=!d.hidden; if(!d.hidden) showSettings(); });
+  $('#btn-close-settings').addEventListener('click',function(){ $('#settings').hidden=true });
+  $('#set-brain').addEventListener('change',pickBrain);
+  $('#set-save').addEventListener('click',function(){ saveSettings(); $('#set-msg').textContent='Saved.'; });
+  $('#set-test').addEventListener('click',async function(){ saveSettings(); var m=$('#set-msg'); m.textContent='Testing…';
+    try{ var r=await cap.sample('Reply with the single word: ready',{}); m.textContent='Connected. The brain answered: '+String(r.text).trim().slice(0,40); }catch(e){ m.textContent=errText(e); } });
+}
+setView('talk'); chips(); renderAll(); boot();
+})();

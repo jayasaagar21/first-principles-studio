@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>First Principles Studio Live</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f766e'/%3E%3Crect x='6' y='23' width='20' height='3' rx='1.5' fill='%23fff'/%3E%3Crect x='8' y='13' width='5' height='10' rx='1' fill='%23fff'/%3E%3Crect x='18' y='7' width='5' height='16' rx='1' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 html{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}
@@ -60,6 +61,7 @@ input,select,textarea{background:var(--bg);border:1px solid var(--line);padding:
 
 /* top bar */
 .bar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.bar .logo{flex:none;border-radius:7px}
 .modes{display:flex;border:1.5px solid var(--ink)}
 .modes button{border:0;padding:6px 14px;font-family:var(--f-display);font-weight:700}
 .modes button[aria-pressed="true"]{background:var(--acc);color:var(--surface)}
@@ -158,6 +160,7 @@ iframe.demo{width:100%;height:420px;border:1px solid var(--line);background:#fff
 
 <div class="app">
   <header class="bar">
+    <svg class="logo" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#0f766e"/><rect x="6" y="23" width="20" height="3" rx="1.5" fill="#fff"/><rect x="8" y="13" width="5" height="10" rx="1" fill="#fff"/><rect x="18" y="7" width="5" height="16" rx="1" fill="#fff"/></svg>
     <h1>First Principles Studio</h1>
     <div class="modes" role="group" aria-label="Room">
       <button id="m-build" aria-pressed="true">Build</button>
@@ -180,11 +183,11 @@ iframe.demo{width:100%;height:420px;border:1px solid var(--line);background:#fff
     <div class="row"><h2 class="grow">Settings</h2><button id="btn-close-settings">Close</button></div>
     <p class="muted">This copy runs on its own, so it needs a brain. Pick one. Your choice is kept in this browser only.</p>
     <div class="form">
-      <label class="wide"><span class="mono">Brain</span><select id="set-brain"><option value="ollama">Local model on this PC (Ollama): free and offline</option><option value="api">Claude through your own API key: online and paid per use</option></select></label>
+      <label class="wide"><span class="mono">Brain</span><select id="set-brain"><option value="ollama">Local model on this PC (Ollama): free and offline</option><option value="api">Claude through your own API key: online and paid per use</option><option value="gemini">Gemini through your own API key: online and paid per use</option></select></label>
       <label id="row-ollama-url"><span class="mono">Ollama address</span><input id="set-ollama-url" placeholder="http://localhost:11434"></label>
       <label id="row-ollama-model"><span class="mono">Ollama model</span><input id="set-ollama-model" placeholder="qwen3:14b"></label>
-      <label id="row-api-key"><span class="mono">API key</span><input id="set-api-key" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
-      <label id="row-api-model"><span class="mono">Claude model</span><input id="set-api-model" placeholder="claude-sonnet-5-5"></label>
+      <label id="row-api-key"><span class="mono">Claude API key</span><input id="set-api-key" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
+      <label id="row-api-model"><span class="mono">Claude model</span><input id="set-api-model" placeholder="claude-sonnet-5-5"></label><label id="row-gemini-key" hidden><span class="mono">Gemini API key</span><input id="set-gemini-key" type="password" autocomplete="off" placeholder="AIza..."></label><label id="row-gemini-model" hidden><span class="mono">Gemini model</span><input id="set-gemini-model" placeholder="gemini-2.5-flash"></label>
       <div class="row wide"><button class="primary" id="set-save">Save</button><button id="set-test">Test the connection</button><span id="set-msg" class="muted" aria-live="polite"></span></div>
     </div>
     <p class="muted" id="set-help"></p>
@@ -310,8 +313,8 @@ function saveCustom(){ if(dbCol) saving=saving.then(function(){ return dbCol.doc
 function use(n){ try{ return (window.claude&&window.claude.use)?window.claude.use(n).catch(function(){return null}):Promise.resolve(null) }catch(e){ return Promise.resolve(null) } }
 /* ---------- standalone: own brain, browser ears and voice ---------- */
 var INSIDE=!!(window.claude&&window.claude.use);
-function cfg(){ var c=lsGet('fps.settings',null)||{}; return {set:!!c.brain,brain:c.brain||'ollama',ollamaUrl:(c.ollamaUrl||'http://localhost:11434').replace(/\/+$/,''),ollamaModel:c.ollamaModel||'qwen3:14b',apiKey:c.apiKey||'',apiModel:c.apiModel||'claude-sonnet-5-5'}; }
-function brainName(){ var c=cfg(); return !c.set?'not set up':c.brain==='api'?'Claude API, '+c.apiModel:'Ollama, '+c.ollamaModel }
+function cfg(){ var c=lsGet('fps.settings',null)||{}; return {set:!!c.brain,brain:c.brain||'ollama',ollamaUrl:(c.ollamaUrl||'http://localhost:11434').replace(/\/+$/,''),ollamaModel:c.ollamaModel||'qwen3:14b',apiKey:c.apiKey||'',apiModel:c.apiModel||'claude-sonnet-5-5',geminiKey:c.geminiKey||'',geminiModel:c.geminiModel||'gemini-2.5-flash'}; }
+function brainName(){ var c=cfg(); return !c.set?'not set up':c.brain==='gemini'?'Gemini API, '+c.geminiModel:c.brain==='api'?'Claude API, '+c.apiModel:'Ollama, '+c.ollamaModel }
 function fail(msg){ return {code:'setup',message:msg} }
 function split(input){ var m=typeof input==='string'?[{role:'user',content:input}]:input.slice(),sys=''; if(m.length>1&&m[0].role==='user'){ sys=m[0].content; m=m.slice(1); } return {sys:sys,msgs:m}; }
 async function eachLine(res,onLine){ var rd=res.body.getReader(),dec=new TextDecoder(),buf='',r,i; for(;;){ r=await rd.read(); if(r.done) break; buf+=dec.decode(r.value,{stream:true}); while((i=buf.indexOf('\n'))>=0){ onLine(buf.slice(0,i)); buf=buf.slice(i+1); } } if(buf.trim()) onLine(buf); }
@@ -336,8 +339,22 @@ async function claudeApi(input,opts,json){
   catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled',text:text}; throw fail('The answer from the Claude API was cut off.'); }
   return {text:text,truncated:stopped==='max_tokens'};
 }
+async function geminiApi(input,opts,json){
+  var c=cfg(),p=split(input),text='',fin='',res;
+  if(!c.geminiKey) throw fail('Add your Gemini API key in Settings first.');
+  var body={contents:p.msgs.map(function(m){ return {role:m.role==='assistant'?'model':'user',parts:[{text:String(m.content)}]} }),generationConfig:{maxOutputTokens:4000}};
+  if(p.sys) body.systemInstruction={parts:[{text:p.sys}]};
+  if(json) body.generationConfig.responseMimeType='application/json';
+  var url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(c.geminiModel)+':streamGenerateContent?alt=sse';
+  try{ res=await fetch(url,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':c.geminiKey},body:JSON.stringify(body),signal:opts.signal}); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled'}; throw fail('Could not reach the Gemini API. Check the internet connection.'); }
+  if(!res.ok) throw fail(res.status===400||res.status===401||res.status===403?'Gemini did not accept the API key. Check it in Settings.':res.status===404?'The Gemini API does not know the model "'+c.geminiModel+'". Check the model name in Settings.':res.status===429?'The Gemini API is rate limiting this key or has used its quota. Wait a moment and try again.':'The Gemini API answered with an error ('+res.status+').');
+  try{ await eachLine(res,function(l){ if(l.slice(0,5)!=='data:') return; var o; try{ o=JSON.parse(l.slice(5)) }catch(e){ return } var cand=o.candidates&&o.candidates[0]; if(!cand) return; ((cand.content&&cand.content.parts)||[]).forEach(function(pt){ if(pt.text){ text+=pt.text; if(opts.onText) opts.onText({text:text,delta:pt.text}); } }); if(cand.finishReason) fin=cand.finishReason; }); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled',text:text}; throw fail('The answer from Gemini was cut off.'); }
+  return {text:text,truncated:fin==='MAX_TOKENS'};
+}
 function parseJson(t){ t=String(t||''); try{ return JSON.parse(t) }catch(e){} var a=t.search(/[\[{]/),b=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']')); if(a>=0&&b>a){ try{ return JSON.parse(t.slice(a,b+1)) }catch(e){} } throw {code:'invalid_json',text:t}; }
-function ownBrain(){ var c=cfg(); if(!c.set) return null; var f=c.brain==='api'?claudeApi:ollama;
+function ownBrain(){ var c=cfg(); if(!c.set) return null; var f=c.brain==='gemini'?geminiApi:c.brain==='api'?claudeApi:ollama;
   var s=function(input,opts){ return f(input,opts||{},false) }; s.json=async function(input,opts){ return parseJson((await f(input,opts||{},true)).text) }; return s; }
 function browserEars(){
   var R=window.SpeechRecognition||window.webkitSpeechRecognition; if(!R) return null;
@@ -353,7 +370,39 @@ function browserEars(){
     stop:function(){ return new Promise(function(ok){ if(!rec||!on){ ok(); return; } rec.onend=function(){ on=false; st('idle','stopped'); ok(); }; try{ rec.stop() }catch(e){ on=false; st('idle','stopped'); ok(); } }) }};
   function final(t){ hf.forEach(function(f){ f({text:String(t).trim()}) }) }
 }
-function fileSaver(){ return {save:function(o){ return new Promise(function(ok){ var a=document.createElement('a'),u=URL.createObjectURL(new Blob([o.data],{type:'text/markdown'})); a.href=u; a.download=o.filename; document.body.append(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u) },2000); ok({status:'saved'}); }) }} }
+function crc32u(b){ var t=crc32u.t; if(!t){ t=crc32u.t=[]; for(var n=0;n<256;n++){ var k=n; for(var j=0;j<8;j++) k=k&1?(0xEDB88320^(k>>>1)):(k>>>1); t[n]=k>>>0; } } var c=0xFFFFFFFF; for(var i=0;i<b.length;i++) c=t[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function zipStore(files){ var enc=new TextEncoder(), parts=[], central=[], off=0, total=0;
+  files.forEach(function(f){ var nb=enc.encode(f.name), d=f.data, crc=crc32u(d);
+    var lh=new DataView(new ArrayBuffer(30)); lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true); lh.setUint16(8,0,true); lh.setUint16(10,0,true); lh.setUint16(12,0x21,true); lh.setUint32(14,crc,true); lh.setUint32(18,d.length,true); lh.setUint32(22,d.length,true); lh.setUint16(26,nb.length,true); lh.setUint16(28,0,true);
+    parts.push(new Uint8Array(lh.buffer),nb,d);
+    var ch=new DataView(new ArrayBuffer(46)); ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true); ch.setUint16(10,0,true); ch.setUint16(12,0,true); ch.setUint16(14,0x21,true); ch.setUint32(16,crc,true); ch.setUint32(20,d.length,true); ch.setUint32(24,d.length,true); ch.setUint16(28,nb.length,true); ch.setUint32(42,off,true);
+    central.push(new Uint8Array(ch.buffer),nb); off+=30+nb.length+d.length; });
+  var cs=0; central.forEach(function(x){ cs+=x.length }); var end=new DataView(new ArrayBuffer(22)); end.setUint32(0,0x06054b50,true); end.setUint16(8,files.length,true); end.setUint16(10,files.length,true); end.setUint32(12,cs,true); end.setUint32(16,off,true);
+  parts=parts.concat(central,[new Uint8Array(end.buffer)]); parts.forEach(function(x){ total+=x.length }); var out=new Uint8Array(total), pos=0; parts.forEach(function(x){ out.set(x,pos); pos+=x.length }); return out; }
+function docxFromMarkdown(md){
+  function esc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function run(t,sz,bold,mono){ return '<w:r><w:rPr>'+(mono?'<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/>':'')+(bold?'<w:b/>':'')+(sz?'<w:sz w:val="'+sz+'"/>':'')+'</w:rPr><w:t xml:space="preserve">'+esc(t)+'</w:t></w:r>'; }
+  function para(t,o){ o=o||{}; var ppr='<w:pPr>'+(o.before?'<w:spacing w:before="'+o.before+'" w:after="120"/>':'<w:spacing w:after="120"/>')+(o.indent?'<w:ind w:left="360" w:hanging="240"/>':'')+'</w:pPr>'; return '<w:p>'+ppr+run(t.replace(/\*\*/g,''),o.sz,o.bold,o.mono)+'</w:p>'; }
+  var body=[], lines=String(md).split('\n'), code=false;
+  lines.forEach(function(line){
+    if(/^```/.test(line)){ code=!code; return; }
+    if(code){ body.push(para(line,{mono:true,sz:18})); return; }
+    if(/^### /.test(line)) body.push(para(line.slice(4),{bold:true,sz:24,before:200}));
+    else if(/^## /.test(line)) body.push(para(line.slice(3),{bold:true,sz:30,before:280}));
+    else if(/^# /.test(line)) body.push(para(line.slice(2),{bold:true,sz:40}));
+    else if(/^\s*[-*] /.test(line)) body.push(para('•  '+line.replace(/^\s*[-*] /,''),{indent:true}));
+    else if(/^\s*$/.test(line)) body.push('<w:p/>');
+    else body.push(para(line));
+  });
+  var doc='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'+body.join('')+'<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>';
+  var enc=new TextEncoder();
+  return zipStore([
+    {name:'[Content_Types].xml',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')},
+    {name:'_rels/.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')},
+    {name:'word/document.xml',data:enc.encode(doc)}
+  ]);
+}
+function fileSaver(){ return {save:function(o){ return new Promise(function(ok){ var a=document.createElement('a'),u=URL.createObjectURL(new Blob([o.data],{type:o.type||'text/markdown'})); a.href=u; a.download=o.filename; document.body.append(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u) },2000); ok({status:'saved'}); }) }} }
 function standIn(n){ return n==='sample'?ownBrain():n==='dictation'?browserEars():n==='downloads'?fileSaver():null }
 var saveNote='';
 function chips(note){
@@ -676,7 +725,7 @@ var PANES={
  Notes:function(){ var g=S.graph; if(!g.nodes.length) return [h('p',{class:'muted',text:'Each idea the expert establishes is written here in one or two sentences.'})];
    return [h('div',{class:'cards'},g.nodes.map(function(x){ return h('div',{class:'card'},h('h3',{text:x.label}),h('p',{text:x.principle})) }))]; },
  Report:function(){ var md=report();
-   return [h('div',{class:'row'},cap.downloads?h('button',{class:'primary',text:'Download as Markdown',onclick:function(){ cap.downloads.save({filename:slug()+'.md',data:md}).catch(function(){}) }}):null,
+   return [h('div',{class:'row'},cap.downloads?h('button',{class:'primary',text:'Download Word (.docx)',onclick:function(){ cap.downloads.save({filename:slug()+'.docx',data:docxFromMarkdown(md),type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}).catch(function(){}) }}):null,
      h('button',{text:'Copy',onclick:function(ev){ var b=ev.target; try{ navigator.clipboard.writeText(md).then(function(){ b.textContent='Copied' },function(){ sel() }) }catch(e){ sel() } function sel(){ var r=document.createRange(); r.selectNodeContents($('#report')); var s=getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent='Selected, now copy'; } }})),
      h('pre',{class:'report',id:'report',text:md})]; }
 };
@@ -737,10 +786,10 @@ $('#xf-save').addEventListener('click',function(){
   var x={id:'c'+Date.now().toString(36),s:name.slice(0,2),name:name,room:'own',field:field,lens:'Your own specialist in '+field+'.',axioms:ax||'The established basics of '+field+'.',style:$('#xf-style').value,voice:$('#xf-voice').value};
   custom.push(x); saveCustom(); S.expertId=x.id; $('#xf-err').textContent=''; ['xf-name','xf-field','xf-axioms'].forEach(function(i){ $('#'+i).value='' }); $('#expert-form').hidden=true; renderExperts();
 });
-function pickBrain(){ var api=$('#set-brain').value==='api'; ['row-ollama-url','row-ollama-model'].forEach(function(i){ $('#'+i).hidden=api }); ['row-api-key','row-api-model'].forEach(function(i){ $('#'+i).hidden=!api });
-  $('#set-help').textContent=api?'The key is stored in this browser only and is sent straight to the Claude API. Anyone who can use this browser profile can read it, so use a key with a spending limit. Each answer costs a small amount.':'Install Ollama on this PC and download a model, for example by running "ollama pull qwen3:14b". Ollama only answers pages it has been told to trust, so set its OLLAMA_ORIGINS setting to allow this page and restart it. Nothing you say to the expert leaves the PC. Voice input uses the browser\'s speech recognition, which in Chrome is an online service; typing works fully offline.'; }
-function showSettings(){ var c=cfg(); $('#set-brain').value=c.brain; $('#set-ollama-url').value=c.ollamaUrl; $('#set-ollama-model').value=c.ollamaModel; $('#set-api-key').value=c.apiKey; $('#set-api-model').value=c.apiModel; $('#set-msg').textContent=''; pickBrain(); }
-function saveSettings(){ lsSet('fps.settings',{brain:$('#set-brain').value,ollamaUrl:$('#set-ollama-url').value.trim(),ollamaModel:$('#set-ollama-model').value.trim(),apiKey:$('#set-api-key').value.trim(),apiModel:$('#set-api-model').value.trim()}); cap.sample=ownBrain(); chips(); renderScribe(); }
+function pickBrain(){ var v=$('#set-brain').value,api=v==='api',gem=v==='gemini'; ['row-ollama-url','row-ollama-model'].forEach(function(i){ $('#'+i).hidden=api||gem }); ['row-api-key','row-api-model'].forEach(function(i){ $('#'+i).hidden=!api }); ['row-gemini-key','row-gemini-model'].forEach(function(i){ $('#'+i).hidden=!gem });
+  $('#set-help').textContent=gem?'The Gemini key is stored in this browser only and is sent straight to Google\'s Gemini API. Anyone who can use this browser profile can read it, so use a key with a spending limit. Each answer costs a small amount.':api?'The key is stored in this browser only and is sent straight to the Claude API. Anyone who can use this browser profile can read it, so use a key with a spending limit. Each answer costs a small amount.':'Install Ollama on this PC and download a model, for example by running "ollama pull qwen3:14b". Ollama only answers pages it has been told to trust, so set its OLLAMA_ORIGINS setting to allow this page and restart it. Nothing you say to the expert leaves the PC. Voice input uses the browser\'s speech recognition, which in Chrome is an online service; typing works fully offline.'; }
+function showSettings(){ var c=cfg(); $('#set-brain').value=c.brain; $('#set-ollama-url').value=c.ollamaUrl; $('#set-ollama-model').value=c.ollamaModel; $('#set-api-key').value=c.apiKey; $('#set-api-model').value=c.apiModel; $('#set-gemini-key').value=c.geminiKey; $('#set-gemini-model').value=c.geminiModel; $('#set-msg').textContent=''; pickBrain(); }
+function saveSettings(){ lsSet('fps.settings',{brain:$('#set-brain').value,ollamaUrl:$('#set-ollama-url').value.trim(),ollamaModel:$('#set-ollama-model').value.trim(),apiKey:$('#set-api-key').value.trim(),apiModel:$('#set-api-model').value.trim(),geminiKey:$('#set-gemini-key').value.trim(),geminiModel:$('#set-gemini-model').value.trim()}); cap.sample=ownBrain(); chips(); renderScribe(); }
 if(!INSIDE){
   $('#btn-settings').hidden=false;
   $('#btn-settings').addEventListener('click',function(){ var d=$('#settings'); d.hidden=!d.hidden; if(!d.hidden) showSettings(); });

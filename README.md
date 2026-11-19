@@ -10,8 +10,9 @@ An offline, voice-first assistant for first-principles research. You talk to a s
 |---|---|---|
 | Blueprint | [`blueprint/`](blueprint/) | Reference. Five figures that explain the whole product. |
 | App | [`app/`](app/) | Working. The app in one file, for use inside Claude or on its own. |
-| Android APK | `android/` | Planned. |
-| Browser extension | `extension/` | Planned. |
+| Browser extension | [`extension/`](extension/) | Working. Chrome and Edge, load unpacked. |
+| Android app | [`android/`](android/) | Working. Debug APK, built with Gradle. |
+| Claude Code plugin | [`plugin/`](plugin/) | Working. Adds `/first-principles` to Claude Code. |
 
 ## App
 
@@ -20,7 +21,7 @@ An offline, voice-first assistant for first-principles research. You talk to a s
 It runs in two ways:
 
 - **Inside Claude, as a page.** The brain, ears and voice come from Claude. Nothing to set up.
-- **On its own.** Download `app/index.html`, open it in Chrome or Edge, then open Settings and pick a brain: a local model through Ollama (free and offline), or Claude through your own API key (online, paid per use). You can switch at any time. Voice uses the browser's speech features, and sessions are saved in the browser.
+- **On its own.** Download `app/index.html`, open it in Chrome or Edge, then open Settings and pick a brain: a local model through Ollama (free and offline), Claude or Gemini through your own API key (online, paid per use). You can switch at any time. Voice uses the browser's speech features, and sessions are saved in the browser.
 
 Notes for running it on its own:
 
@@ -30,15 +31,14 @@ Notes for running it on its own:
 
 Three things in it are deliberately different from the original description:
 
-- Offline needs the Ollama brain. Inside Claude, or with an API key, it is online.
+- Offline needs the Ollama brain. Inside Claude, or with a Claude or Gemini API key, it is online.
 - The three fits come from the model's general knowledge, not a live web search. Each one lists what to verify.
 - Wikipedia and YouTube links are search links, so a link can never be invented.
 
 ### Next
 
-1. An Android APK.
-2. A browser extension.
-3. Offline speech recognition and offline Wikipedia, as in the blueprint.
+1. Offline speech recognition and offline Wikipedia, as in the blueprint.
+2. Signed release builds for the Android app and a Chrome Web Store listing.
 
 ## Blueprint
 

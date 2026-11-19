@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "First Principles Studio",
+  "version": "0.1.0",
+  "description": "Think from first principles with expert bots. Runs on a local Ollama model, or on your own Claude API key.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Open First Principles Studio",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "http://localhost:11434/*",
+    "http://127.0.0.1:11434/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ]
+}
